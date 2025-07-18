@@ -1,0 +1,176 @@
+Imports: from datetime import datetime
+import random
+import os
+
+Funcoes: 
+def saudacao(): 
+    return "The Python Framework for the Web"
+
+def get_framework_stats():
+    return {
+        'components': len([f for f in os.listdir('components') if f.endswith('.tg')]) if os.path.exists('components') else 1,
+        'uptime': f"{random.randint(1, 99)} min",
+        'requests': random.randint(100, 999),
+        'version': "0.1.0"
+    }
+
+def get_server_status():
+    return "🟢 Online"
+
+def get_features():
+    return [
+        {
+            'icon': '⚡',
+            'title': 'Lightning Fast',
+            'description': 'Powered by FastAPI & Uvicorn',
+            'color': '#3b82f6'
+        },
+        {
+            'icon': '🔄',
+            'title': 'Hot Reload',
+            'description': 'Instant development feedback',
+            'color': '#10b981'
+        },
+        {
+            'icon': '🎨',
+            'title': 'Modern Syntax',
+            'description': 'Clean & intuitive .tg components',
+            'color': '#8b5cf6'
+        },
+        {
+            'icon': '🛠️',
+            'title': 'Developer First',
+            'description': 'Built for productivity',
+            'color': '#f59e0b'
+        },
+        {
+            'icon': '🚀',
+            'title': 'Production Ready',
+            'description': 'Scalable architecture',
+            'color': '#ef4444'
+        },
+        {
+            'icon': '📱',
+            'title': 'Responsive',
+            'description': 'Mobile-first design',
+            'color': '#06b6d4'
+        }
+    ]
+
+Html:
+<div class="tagonpy-app">
+    <div class="hero-section">
+        <div class="background-grid"></div>
+        <div class="hero-content">
+            <div class="brand-container">
+                <div class="logo">
+                    <span class="logo-icon">🏷️</span>
+                    <span class="logo-text">TagonPy</span>
+                </div>
+                <h1 class="hero-title">{{ saudacao() }}</h1>
+                <p class="hero-subtitle">
+                    Used by developers worldwide, TagonPy enables you to create 
+                    <span class="highlight">high-quality web applications</span> 
+                    with the power of Python components.
+                </p>
+            </div>
+            
+            <div class="action-buttons">
+                <button class="btn btn-primary">
+                    <span>Get Started</span>
+                    <span class="btn-icon">→</span>
+                </button>
+                <button class="btn btn-secondary">
+                    <span>Learn TagonPy</span>
+                </button>
+            </div>
+            
+            <div class="terminal-preview">
+                <div class="terminal-header">
+                    <div class="terminal-buttons">
+                        <div class="terminal-button red"></div>
+                        <div class="terminal-button yellow"></div>
+                        <div class="terminal-button green"></div>
+                    </div>
+                    <div class="terminal-title">Terminal</div>
+                </div>
+                <div class="terminal-body">
+                    <div class="terminal-line">
+                        <span class="terminal-prompt">$</span>
+                        <span class="terminal-command">tagonpy create-app@latest</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-section">
+        <div class="stats-container">
+            <div class="stat-card">
+                <div class="stat-value">{{ get_framework_stats()['components'] }}</div>
+                <div class="stat-label">Components</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ get_framework_stats()['uptime'] }}</div>
+                <div class="stat-label">Uptime</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ get_framework_stats()['requests'] }}</div>
+                <div class="stat-label">Requests</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">v{{ get_framework_stats()['version'] }}</div>
+                <div class="stat-label">Version</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="features-section">
+        <div class="section-header">
+            <h2>Why TagonPy?</h2>
+            <p>Everything you need to build modern web applications</p>
+        </div>
+        
+        <div class="features-grid">
+            {% for feature in get_features() %}
+            <div class="feature-card" style="--accent-color: {{ feature['color'] }}">
+                <div class="feature-icon">{{ feature['icon'] }}</div>
+                <h3 class="feature-title">{{ feature['title'] }}</h3>
+                <p class="feature-description">{{ feature['description'] }}</p>
+                <div class="feature-accent"></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="status-section">
+        <div class="status-card">
+            <div class="status-header">
+                <h3>Server Status</h3>
+                <div class="status-indicator">{{ get_server_status() }}</div>
+            </div>
+            <div class="status-details">
+                <div class="status-item">
+                    <span class="status-label">Generated at:</span>
+                    <span class="status-value">{{ datetime.now().strftime("%d/%m/%Y at %H:%M:%S") }}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Environment:</span>
+                    <span class="status-value">Development</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Port:</span>
+                    <span class="status-value">3000</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+Css:
+/* CSS básico como fallback - estilos principais em App.css */
+.tagonpy-app {
+    background: #0a0a0a;
+    color: #ffffff;
+    min-height: 100vh;
+}

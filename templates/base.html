@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title or "TagonPy" }}</title>
+    <style>
+        /* Reset básico para garantir limpeza */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* CSS do componente será injetado aqui */
+        {{ component_css | safe }}
+    </style>
+</head>
+<body>
+    {{ content | safe }}
+    
+    <!-- Live Reload Script -->
+    <script>
+        console.log('🔗 Iniciando TagonPy Live Reload...');
+        
+        let ws;
+        let reconnectInterval = 1000;
+        let maxReconnectInterval = 5000;
+        let reconnectAttempts = 0;
+        
+        function connect() {
+            try {
+                ws = new WebSocket('ws://localhost:3000/ws');
+                
+                ws.onopen = function() {
+                    console.log('✅ Live reload conectado');
+                    reconnectAttempts = 0;
+                    reconnectInterval = 1000;
+                    showConnectionStatus('connected');
+                };
+                
+                ws.onmessage = function(event) {
+                    console.log('📨 Mensagem recebida:', event.data);
+                    if (event.data === 'reload') {
+                        console.log('🔄 Recarregando página...');
+                        showReloadNotification();
+                        setTimeout(() => {
+                            location.reload();
+                        }, 500);
+                    }
+                };
+                
+                ws.onclose = function() {
+                    console.log('❌ Conexão perdida. Tentando reconectar...');
+                    showConnectionStatus('disconnected');
+                    scheduleReconnect();
+                };
+                
+                ws.onerror = function(error) {
+                    console.error('🚨 Erro no WebSocket:', error);
+                    showConnectionStatus('error');
+                };
+                
+            } catch (error) {
+                console.error('🚨 Erro ao conectar:', error);
+                scheduleReconnect();
+            }
+        }
+        
+        function scheduleReconnect() {
+            reconnectAttempts++;
+            console.log(`🔄 Tentativa de reconexão ${reconnectAttempts} em ${reconnectInterval}ms`);
+            
+            setTimeout(() => {
+                connect();
+            }, reconnectInterval);
+            
+            reconnectInterval = Math.min(reconnectInterval * 1.5, maxReconnectInterval);
+        }
+        
+        function showConnectionStatus(status) {
+            const existingIndicator = document.getElementById('tagonpy-status');
+            if (existingIndicator) {
+                existingIndicator.remove();
+            }
+            
+            const indicator = document.createElement('div');
+            indicator.id = 'tagonpy-status';
+            indicator.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                z-index: 9999;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: 600;
+                color: white;
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255,255,255,0.2);
+                transition: all 0.3s ease;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            `;
+            
+            if (status === 'connected') {
+                indicator.style.background = 'rgba(16, 185, 129, 0.9)';
+                indicator.textContent = '🟢 Live Reload ON';
+            } else if (status === 'disconnected') {
+                indicator.style.background = 'rgba(239, 68, 68, 0.9)';
+                indicator.textContent = '🔴 Reconnecting...';
+            } else {
+                indicator.style.background = 'rgba(245, 158, 11, 0.9)';
+                indicator.textContent = '🟡 Connection Error';
+            }
+            
+            document.body.appendChild(indicator);
+            
+            if (status === 'connected') {
+                setTimeout(() => {
+                    if (indicator && indicator.parentNode) {
+                        indicator.style.opacity = '0';
+                        setTimeout(() => {
+                            if (indicator && indicator.parentNode) {
+                                indicator.remove();
+                            }
+                        }, 300);
+                    }
+                }, 3000);
+            }
+        }
+        
+        function showReloadNotification() {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                z-index: 10000;
+                background: rgba(59, 130, 246, 0.95);
+                color: white;
+                padding: 20px 30px;
+                border-radius: 12px;
+                font-size: 16px;
+                font-weight: 600;
+                backdrop-filter: blur(20px);
+                border: 1px solid rgba(255,255,255,0.3);
+                box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                animation: tagonpy-pulse 0.5s ease;
+            `;
+            notification.textContent = '🔄 Atualizando componente...';
+            
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes tagonpy-pulse {
+                    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+                    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            document.body.appendChild(notification);
+        }
+        
+        connect();
+        
+        setTimeout(() => {
+            const body = document.body;
+            const computedStyle = window.getComputedStyle(body);
+            const backgroundColor = computedStyle.backgroundColor;
+            
+            console.log('🎨 Background color detectado:', backgroundColor);
+            
+            if (backgroundColor === 'rgba(0, 0, 0, 0)' || backgroundColor === 'transparent') {
+                console.warn('⚠️ Tema escuro pode não estar sendo aplicado corretamente');
+            } else {
+                console.log('✅ Estilos do componente aplicados com sucesso');
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
