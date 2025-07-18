@@ -1,0 +1,335 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "TagonPy",
+  "scopeName": "source.tagonpy",
+  "fileTypes": ["tg"],
+  "patterns": [
+    {
+      "include": "#imports-section"
+    },
+    {
+      "include": "#functions-section"
+    },
+    {
+      "include": "#html-section"
+    },
+    {
+      "include": "#css-section"
+    },
+    {
+      "include": "#comments"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.tagonpy",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "section-header": {
+      "patterns": [
+        {
+          "name": "keyword.control.section.tagonpy",
+          "match": "^\\s*(Imports|Funcoes|Html|Css)\\s*:",
+          "captures": {
+            "1": {
+              "name": "entity.name.section.tagonpy"
+            }
+          }
+        }
+      ]
+    },
+    "imports-section": {
+      "name": "meta.section.imports.tagonpy",
+      "begin": "^\\s*(Imports)\\s*:",
+      "end": "^(?=\\s*(Funcoes|Html|Css)\\s*:)|\\z",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.section.imports.tagonpy"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#python-imports"
+        },
+        {
+          "include": "#comments"
+        }
+      ]
+    },
+    "functions-section": {
+      "name": "meta.section.functions.tagonpy",
+      "begin": "^\\s*(Funcoes)\\s*:",
+      "end": "^(?=\\s*(Imports|Html|Css)\\s*:)|\\z",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.section.functions.tagonpy"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#python-code"
+        },
+        {
+          "include": "#comments"
+        }
+      ]
+    },
+    "html-section": {
+      "name": "meta.section.html.tagonpy",
+      "begin": "^\\s*(Html)\\s*:",
+      "end": "^(?=\\s*(Imports|Funcoes|Css)\\s*:)|\\z",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.section.html.tagonpy"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#jinja-template"
+        },
+        {
+          "include": "#html-content"
+        },
+        {
+          "include": "#comments"
+        }
+      ]
+    },
+    "css-section": {
+      "name": "meta.section.css.tagonpy",
+      "begin": "^\\s*(Css)\\s*:",
+      "end": "^(?=\\s*(Imports|Funcoes|Html)\\s*:)|\\z",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.section.css.tagonpy"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.css"
+        },
+        {
+          "include": "#comments"
+        }
+      ]
+    },
+    "python-imports": {
+      "patterns": [
+        {
+          "name": "keyword.control.import.python",
+          "match": "\\b(import|from|as)\\b"
+        },
+        {
+          "name": "entity.name.namespace.python",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*(?:import|\\.))"
+        },
+        {
+          "name": "entity.name.class.python",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    },
+    "python-code": {
+      "patterns": [
+        {
+          "name": "storage.type.function.python",
+          "match": "\\bdef\\b"
+        },
+        {
+          "name": "entity.name.function.python",
+          "match": "(?<=def\\s)[a-zA-Z_][a-zA-Z0-9_]*"
+        },
+        {
+          "name": "storage.type.class.python",
+          "match": "\\bclass\\b"
+        },
+        {
+          "name": "keyword.control.python",
+          "match": "\\b(if|elif|else|for|while|try|except|finally|with|return|yield|break|continue|pass|raise|assert)\\b"
+        },
+        {
+          "name": "keyword.operator.python",
+          "match": "\\b(and|or|not|in|is)\\b"
+        },
+        {
+          "name": "constant.language.python",
+          "match": "\\b(True|False|None)\\b"
+        },
+        {
+          "name": "constant.numeric.python",
+          "match": "\\b\\d+(\\.\\d+)?\\b"
+        },
+        {
+          "name": "string.quoted.single.python",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.python",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.python",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.python",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.triple.python",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.python",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "jinja-template": {
+      "patterns": [
+        {
+          "name": "meta.template.expression.jinja",
+          "begin": "\\{\\{",
+          "end": "\\}\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.template.begin.jinja"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.template.end.jinja"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#python-expressions"
+            }
+          ]
+        },
+        {
+          "name": "meta.template.block.jinja",
+          "begin": "\\{%",
+          "end": "%\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.template.begin.jinja"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.template.end.jinja"
+            }
+          },
+          "patterns": [
+            {
+              "name": "keyword.control.jinja",
+              "match": "\\b(for|endfor|if|elif|else|endif|block|endblock|extends|include|set|with|endwith)\\b"
+            },
+            {
+              "include": "#python-expressions"
+            }
+          ]
+        }
+      ]
+    },
+    "python-expressions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.python",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*\\()"
+        },
+        {
+          "name": "variable.other.python",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        },
+        {
+          "name": "constant.language.python",
+          "match": "\\b(True|False|None)\\b"
+        },
+        {
+          "name": "constant.numeric.python",
+          "match": "\\b\\d+(\\.\\d+)?\\b"
+        },
+        {
+          "name": "string.quoted.single.python",
+          "match": "'[^']*'"
+        },
+        {
+          "name": "string.quoted.double.python",
+          "match": "\"[^\"]*\""
+        },
+        {
+          "name": "keyword.operator.python",
+          "match": "[+\\-*/=<>!]+"
+        }
+      ]
+    },
+    "html-content": {
+      "patterns": [
+        {
+          "name": "meta.tag.html",
+          "begin": "</?[a-zA-Z][a-zA-Z0-9]*",
+          "end": "/?>",
+          "beginCaptures": {
+            "0": {
+              "name": "entity.name.tag.html"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.tag.end.html"
+            }
+          },
+          "patterns": [
+            {
+              "name": "entity.other.attribute-name.html",
+              "match": "\\b[a-zA-Z-]+(?=\\s*=)"
+            },
+            {
+              "name": "string.quoted.double.html",
+              "begin": "\"",
+              "end": "\"",
+              "patterns": [
+                {
+                  "include": "#jinja-template"
+                }
+              ]
+            },
+            {
+              "name": "string.quoted.single.html",
+              "begin": "'",
+              "end": "'",
+              "patterns": [
+                {
+                  "include": "#jinja-template"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "entity.name.tag.html",
+          "match": "</?[a-zA-Z][a-zA-Z0-9]*"
+        },
+        {
+          "name": "text.html",
+          "match": "[^<{]+"
+        }
+      ]
+    }
+  }
+}

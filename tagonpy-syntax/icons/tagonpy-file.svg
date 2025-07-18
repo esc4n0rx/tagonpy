@@ -1,0 +1,16 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect x="1" y="1" width="14" height="14" rx="2" fill="#3B82F6" stroke="#2563EB" stroke-width="0.5"/>
+  
+  <!-- Tag symbol -->
+  <path d="M3 8L8 3L13 8L8 13L3 8Z" fill="white" fill-opacity="0.9"/>
+  
+  <!-- Inner tag -->
+  <path d="M5 8L8 5L11 8L8 11L5 8Z" fill="#1D4ED8" fill-opacity="0.8"/>
+  
+  <!-- Dot in center -->
+  <circle cx="8" cy="8" r="1.5" fill="white"/>
+  
+  <!-- TG text -->
+  <text x="8" y="15" font-family="Arial, sans-serif" font-size="3" font-weight="bold" text-anchor="middle" fill="#2563EB">TG</text>
+</svg>

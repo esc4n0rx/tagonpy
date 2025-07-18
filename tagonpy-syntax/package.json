@@ -1,0 +1,66 @@
+{
+  "name": "tagonpy-syntax",
+  "displayName": "TagonPy Syntax Highlighting",
+  "description": "Syntax highlighting for TagonPy framework .tg files",
+  "version": "1.0.1",
+  "publisher": "tagonpy",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Themes"
+  ],
+  "keywords": [
+    "tagonpy",
+    "python",
+    "web framework",
+    "syntax highlighting",
+    "tg files",
+    "icons"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "tagonpy",
+        "aliases": ["TagonPy", "tagonpy"],
+        "extensions": [".tg"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/tagonpy-file.svg",
+          "dark": "./icons/tagonpy-file-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tagonpy",
+        "scopeName": "source.tagonpy",
+        "path": "./syntaxes/tagonpy.tmLanguage.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "tagonpy-icons",
+        "label": "TagonPy Icons",
+        "path": "./themes/tagonpy-icon-theme.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "echo 'No compilation needed for syntax extension'",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^2.15.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tagonpy/tagonpy-syntax.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tagonpy/tagonpy-syntax/issues"
+  },
+  "homepage": "https://github.com/tagonpy/tagonpy-syntax#readme",
+  "license": "MIT"
+}

@@ -1,0 +1,29 @@
+{
+  "iconDefinitions": {
+    "tagonpy-file": {
+      "iconPath": "../icons/tagonpy-file.svg"
+    },
+    "tagonpy-file-dark": {
+      "iconPath": "../icons/tagonpy-file-dark.svg"
+    }
+  },
+  "fileExtensions": {
+    "tg": "tagonpy-file"
+  },
+  "fileNames": {},
+  "folderNames": {},
+  "folderNamesExpanded": {},
+  "languageIds": {
+    "tagonpy": "tagonpy-file"
+  },
+  "light": {
+    "fileExtensions": {
+      "tg": "tagonpy-file"
+    }
+  },
+  "highContrast": {
+    "fileExtensions": {
+      "tg": "tagonpy-file-dark"
+    }
+  }
+}
