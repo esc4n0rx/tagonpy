@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import shutil
 
+from .cdn_fallback import TailwindCDNManager
+
 class TailwindManager:
     """
     Gerenciador do Tailwind CSS para TagonPy
-    Handles installation, configuration, and building of Tailwind CSS
+    Handles installation, configuration, building com CDN fallback
     """
     
     def __init__(self, project_root: str = "."):
@@ -29,22 +31,49 @@ class TailwindManager:
         
         self.is_initialized = False
         self.build_process: Optional[asyncio.subprocess.Process] = None
+        self.local_compilation_failed = False
+        
+        # NOVO: CDN Fallback Manager
+        self.cdn_manager = TailwindCDNManager()
         
         print(f"🔧 Sistema detectado: {platform.system()}")
         print(f"📁 Diretório do projeto: {self.project_root.absolute()}")
         
     async def initialize(self):
         """
-        Inicializa o Tailwind CSS no projeto
+        Inicializa o Tailwind CSS no projeto com fallback CDN
         """
-        print("🎨 Inicializando Tailwind CSS...")
+        print("🎨 Inicializando Tailwind CSS com fallback CDN...")
         
+        try:
+            # Tenta inicialização local primeiro
+            await self._initialize_local_compilation()
+            print("✅ Tailwind CSS local inicializado com sucesso!")
+            
+        except Exception as e:
+            print(f"⚠️ Compilação local falhou: {str(e)}")
+            self.local_compilation_failed = True
+            
+            # Fallback para CDN
+            print("🌐 Ativando fallback CDN...")
+            await self.cdn_manager.check_cdn_availability()
+            
+            if self.cdn_manager.is_available:
+                print("✅ Tailwind CSS via CDN configurado com sucesso!")
+            else:
+                print("❌ Nem compilação local nem CDN funcionaram")
+                raise Exception("Tailwind CSS completamente indisponível")
+        
+        self.is_initialized = True
+        
+    async def _initialize_local_compilation(self):
+        """
+        Tenta inicializar compilação local (código original)
+        """
         # Verifica se Node.js está instalado
         node_check = await self._check_node()
         if not node_check["available"]:
-            error_msg = f"Node.js não encontrado. Detalhes: {node_check['error']}"
-            print(f"❌ {error_msg}")
-            raise Exception(error_msg)
+            raise Exception(f"Node.js não encontrado. Detalhes: {node_check['error']}")
         
         print(f"✅ Node.js encontrado: {node_check['version']}")
         
@@ -67,12 +96,11 @@ class TailwindManager:
         # Cria arquivos de configuração
         await self._create_config_files()
         
-        # Build inicial (CORRIGIDO COM MÚLTIPLAS ESTRATÉGIAS)
-        await self._initial_build()
-        
-        self.is_initialized = True
-        print("✅ Tailwind CSS inicializado com sucesso!")
-        
+        # Build inicial com múltiplas estratégias
+        success = await self._initial_build()
+        if not success:
+            raise Exception("Todas as estratégias de build falharam")
+    
     async def _check_node(self) -> Dict[str, Any]:
         """Verifica se Node.js está instalado (versão corrigida para Windows)"""
         try:
@@ -312,9 +340,9 @@ module.exports = {
         
         print("✅ Arquivos de configuração criados")
     
-    async def _initial_build(self):
+    async def _initial_build(self) -> bool:
         """
-        Executa build inicial do CSS - VERSÃO FINAL COM MÚLTIPLAS ESTRATÉGIAS
+        Executa build inicial do CSS - RETORNA BOOL para indicar sucesso
         """
         print("🔨 Executando build inicial com múltiplas estratégias...")
         
@@ -330,15 +358,15 @@ module.exports = {
                 success = await strategy_func()
                 if success:
                     print(f"✅ Sucesso com estratégia: {strategy_name}")
-                    return
+                    return True
                 else:
                     print(f"⚠️ Falhou com estratégia: {strategy_name}")
             except Exception as e:
                 print(f"❌ Erro com estratégia {strategy_name}: {str(e)}")
         
-        # Se todas as estratégias falharam, cria fallback
-        print("🔧 Todas as estratégias falharam, criando CSS de fallback...")
-        await self._create_fallback_css()
+        # Se todas as estratégias falharam
+        print("❌ Todas as estratégias de build local falharam")
+        return False
     
     async def _build_with_npx_direct(self) -> bool:
         """Estratégia 1: NPX direto"""
@@ -473,158 +501,14 @@ module.exports = {
             print(f"❌ Exceção Executável Local: {str(e)}")
             return False
     
-    async def _create_fallback_css(self):
-        """Cria CSS de fallback quando build falha"""
-        fallback_css = """/* TagonPy Fallback CSS com classes Tailwind básicas */
-
-/* Reset */
-*, *::before, *::after {
-  box-sizing: border-box;
-  border-width: 0;
-  border-style: solid;
-}
-
-html {
-  line-height: 1.5;
-  -webkit-text-size-adjust: 100%;
-  tab-size: 4;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-body {
-  margin: 0;
-  line-height: inherit;
-}
-
-/* Cores de fundo */
-.bg-gray-900 { background-color: rgb(17 24 39); }
-.bg-gray-800 { background-color: rgb(31 41 55); }
-.bg-blue-500 { background-color: rgb(59 130 246); }
-.bg-green-400 { background-color: rgb(74 222 128); }
-.bg-yellow-400 { background-color: rgb(250 204 21); }
-.bg-purple-400 { background-color: rgb(196 181 253); }
-.bg-cyan-400 { background-color: rgb(34 211 238); }
-.bg-cyan-500 { background-color: rgb(6 182 212); }
-.bg-green-500 { background-color: rgb(34 197 94); }
-.bg-yellow-500 { background-color: rgb(234 179 8); }
-
-/* Cores de texto */
-.text-white { color: rgb(255 255 255); }
-.text-gray-300 { color: rgb(209 213 219); }
-.text-gray-400 { color: rgb(156 163 175); }
-.text-blue-400 { color: rgb(96 165 250); }
-.text-green-400 { color: rgb(74 222 128); }
-.text-yellow-400 { color: rgb(250 204 21); }
-.text-purple-400 { color: rgb(196 181 253); }
-.text-cyan-400 { color: rgb(34 211 238); }
-.text-transparent { color: transparent; }
-
-/* Layout */
-.container { 
-  width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: 1rem;
-  padding-right: 1rem;
-  max-width: 1280px;
-}
-
-.min-h-screen { min-height: 100vh; }
-.mx-auto { margin-left: auto; margin-right: auto; }
-.px-4 { padding-left: 1rem; padding-right: 1rem; }
-.py-8 { padding-top: 2rem; padding-bottom: 2rem; }
-.p-6 { padding: 1.5rem; }
-.mb-4 { margin-bottom: 1rem; }
-.mb-6 { margin-bottom: 1.5rem; }
-.mb-12 { margin-bottom: 3rem; }
-.mr-2 { margin-right: 0.5rem; }
-.mr-4 { margin-right: 1rem; }
-
-/* Grid */
-.grid { display: grid; }
-.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-.gap-6 { gap: 1.5rem; }
-.gap-8 { gap: 2rem; }
-
-@media (min-width: 768px) {
-  .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-@media (min-width: 1024px) {
-  .lg\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
-
-/* Flexbox */
-.flex { display: flex; }
-.items-center { align-items: center; }
-.items-start { align-items: flex-start; }
-.justify-center { justify-content: center; }
-.space-x-4 > :not([hidden]) ~ :not([hidden]) { margin-left: 1rem; }
-
-/* Texto */
-.text-center { text-align: center; }
-.text-lg { font-size: 1.125rem; line-height: 1.75rem; }
-.text-xl { font-size: 1.25rem; line-height: 1.75rem; }
-.text-2xl { font-size: 1.5rem; line-height: 2rem; }
-.text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
-.text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
-.text-5xl { font-size: 3rem; line-height: 1; }
-.text-6xl { font-size: 3.75rem; line-height: 1; }
-
-.font-bold { font-weight: 700; }
-.font-semibold { font-weight: 600; }
-
-/* Bordas */
-.rounded-lg { border-radius: 0.5rem; }
-.rounded-full { border-radius: 9999px; }
-
-/* Tamanhos */
-.w-3 { width: 0.75rem; }
-.h-3 { height: 0.75rem; }
-.max-w-2xl { max-width: 42rem; }
-
-/* Transições */
-.transition-colors { 
-  transition-property: color, background-color, border-color;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
-/* Hover states */
-.hover\\:bg-gray-750:hover { background-color: #374151; }
-
-/* Gradientes */
-.bg-gradient-to-r { 
-  background: linear-gradient(to right, rgb(96 165 250), rgb(34 211 238));
-}
-
-.bg-clip-text { 
-  -webkit-background-clip: text;
-  background-clip: text;
-}
-
-/* Responsivo básico */
-@media (max-width: 767px) {
-  .container { padding-left: 0.5rem; padding-right: 0.5rem; }
-  .text-5xl { font-size: 2.5rem; }
-  .text-6xl { font-size: 3rem; }
-}
-"""
-        
-        try:
-            with open(self.output_css, 'w', encoding='utf-8') as f:
-                f.write(fallback_css)
-            
-            size = self.output_css.stat().st_size
-            print(f"✅ CSS de fallback criado: {self.output_css} ({size} bytes)")
-            
-        except Exception as e:
-            print(f"❌ Erro ao criar CSS de fallback: {str(e)}")
-    
     async def start_watch_mode(self):
         """
-        Inicia o modo watch do Tailwind CSS usando a melhor estratégia disponível
+        Inicia o modo watch do Tailwind CSS
         """
+        if self.local_compilation_failed:
+            print("⚠️ Watch mode não disponível - usando CDN")
+            return
+            
         if not self.is_initialized:
             await self.initialize()
         
@@ -773,6 +657,10 @@ body {
    
     async def build_production(self):
        """Build de produção com minificação usando múltiplas estratégias"""
+       if self.local_compilation_failed:
+           print("⚠️ Build de produção não disponível - usando CDN")
+           return
+           
        print("🚀 Executando build de produção...")
        
        strategies = [
@@ -869,52 +757,66 @@ body {
            return False
    
     def get_css_content(self) -> str:
-       """Retorna conteúdo do CSS compilado"""
-       try:
-           if self.output_css.exists():
-               with open(self.output_css, 'r', encoding='utf-8') as f:
-                   content = f.read()
-                   print(f"📖 CSS carregado: {len(content)} caracteres")
-                   return content
-           else:
-               print("⚠️ Arquivo CSS compilado não encontrado")
-               return ""
-       except Exception as e:
-           print(f"❌ Erro ao ler CSS: {str(e)}")
-           return ""
-   
+        """Retorna conteúdo do CSS compilado ou fallback"""
+        if self.local_compilation_failed or not self.output_css.exists():
+            print("⚠️ Usando CDN - CSS local não disponível")
+            return ""  # CDN será usado no template
+        
+        try:
+            with open(self.output_css, 'r', encoding='utf-8') as f:
+                content = f.read()
+                print(f"📖 CSS local carregado: {len(content)} caracteres")
+                return content
+        except Exception as e:
+            print(f"❌ Erro ao ler CSS local: {str(e)}")
+            return ""
+    
+    def should_use_cdn(self) -> bool:
+        """Indica se deve usar CDN ao invés de CSS local"""
+        return self.local_compilation_failed or not self.output_css.exists()
+    
+    def get_cdn_html(self) -> str:
+        """Retorna HTML para CDN"""
+        return self.cdn_manager.get_cdn_html_injection()
+    
     def get_status(self) -> Dict[str, Any]:
-       """Retorna status detalhado do Tailwind"""
-       return {
-           "initialized": self.is_initialized,
-           "watching": self.build_process is not None,
-           "config_exists": self.config_file.exists(),
-           "input_css_exists": self.input_css.exists(),
-           "output_css_exists": self.output_css.exists(),
-           "output_css_size": self.output_css.stat().st_size if self.output_css.exists() else 0,
-           "system": platform.system(),
-           "project_root": str(self.project_root.absolute()),
-           "node_modules_exists": self.node_modules_bin.exists(),
-           "possible_executables": self._get_available_executables()
-       }
-   
+        """Retorna status detalhado incluindo CDN"""
+        base_status = {
+            "initialized": self.is_initialized,
+            "local_compilation_failed": self.local_compilation_failed,
+            "should_use_cdn": self.should_use_cdn(),
+            "watching": self.build_process is not None,
+            "config_exists": self.config_file.exists(),
+            "input_css_exists": self.input_css.exists(),
+            "output_css_exists": self.output_css.exists(),
+            "output_css_size": self.output_css.stat().st_size if self.output_css.exists() else 0,
+            "system": platform.system(),
+            "project_root": str(self.project_root.absolute()),
+            "node_modules_exists": self.node_modules_bin.exists(),
+            "possible_executables": self._get_available_executables()
+        }
+        
+        base_status["cdn"] = self.cdn_manager.get_status()
+        
+        return base_status
+
     def _get_available_executables(self) -> Dict[str, bool]:
-       """Verifica quais executáveis estão disponíveis"""
-       executables = {}
-       
-       if self.is_windows:
-           possible_paths = [
-               self.node_modules_bin / "tailwindcss.cmd",
-               self.node_modules_bin / "tailwindcss.bat",
-               self.node_modules_bin / "tailwindcss.exe",
-               self.node_modules_bin / "tailwindcss"
-           ]
-       else:
-           possible_paths = [
-               self.node_modules_bin / "tailwindcss"
-           ]
-       
-       for path in possible_paths:
-           executables[str(path.name)] = path.exists()
-       
-       return executables
+        """Verifica quais executáveis estão disponíveis"""
+        executables = {}
+        
+        if self.is_windows:
+            possible_paths = [
+                self.node_modules_bin / "tailwindcss.cmd",
+                self.node_modules_bin / "tailwindcss.bat",
+                self.node_modules_bin / "tailwindcss.exe",
+                self.node_modules_bin / "tailwindcss"
+            ]
+        else:
+            possible_paths = [
+                self.node_modules_bin / "tailwindcss"
+            ]
+        
+        for path in possible_paths:
+            executables[str(path.name)] = path.exists()
+        
+        return executables

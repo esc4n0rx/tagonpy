@@ -7,7 +7,7 @@ from .tailwind_manager import TailwindManager
 
 class AssetBuilder:
     """
-    Construtor de assets do TagonPy
+    Construtor de assets do TagonPy com suporte CDN
     Gerencia CSS, JS e outros recursos estáticos
     """
     
@@ -86,16 +86,57 @@ class AssetBuilder:
             return False
     
     def get_compiled_css(self) -> str:
-        """Retorna CSS compilado pelo Tailwind (com fallback)"""
+        """Retorna CSS compilado pelo Tailwind ou string vazia para usar CDN"""
         try:
-            if self.initialization_error:
-                return self._get_fallback_css()
+            if self.tailwind_manager.should_use_cdn():
+                print("🌐 Usando Tailwind via CDN")
+                return ""  # Template usará CDN
             
             return self.tailwind_manager.get_css_content()
             
         except Exception as e:
             print(f"⚠️ Erro ao obter CSS compilado: {str(e)}")
-            return self._get_fallback_css()
+            return ""
+    
+    def should_use_cdn(self) -> bool:
+        """Indica se deve usar CDN"""
+        try:
+            return self.tailwind_manager.should_use_cdn()
+        except Exception as e:
+            print(f"⚠️ Erro ao verificar CDN status: {str(e)}")
+            return True  # Fallback para CDN em caso de erro
+    
+    def get_cdn_html(self) -> str:
+        """Retorna HTML para CDN"""
+        try:
+            return self.tailwind_manager.get_cdn_html()
+        except Exception as e:
+            print(f"⚠️ Erro ao obter CDN HTML: {str(e)}")
+            return self._get_emergency_cdn_html()
+    
+    def _get_emergency_cdn_html(self) -> str:
+        """CDN de emergência final"""
+        return '''
+<!-- Tailwind CSS via CDN (Emergency Final Fallback) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: {
+                    'tagonpy': {
+                        50: '#f0f9ff',
+                        500: '#3b82f6',
+                        900: '#1e3a8a'
+                    }
+                }
+            }
+        },
+        darkMode: 'class'
+    };
+    console.log('🎨 Tailwind CSS carregado via CDN (Emergency Final)');
+</script>
+'''
     
     def _get_fallback_css(self) -> str:
         """CSS básico de fallback quando Tailwind não está disponível"""
@@ -133,8 +174,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         return self.initialization_error is None and self.tailwind_manager.is_initialized
     
     def get_status(self) -> Dict:
-        """Status detalhado do asset builder"""
-        tailwind_status = self.tailwind_manager.get_status()
+        """Status detalhado do asset builder com informações de CDN"""
+        try:
+            tailwind_status = self.tailwind_manager.get_status()
+        except Exception as e:
+            tailwind_status = {"error": str(e)}
         
         return {
             "asset_builder": {
@@ -142,6 +186,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 "has_error": self.initialization_error is not None,
                 "error_message": self.initialization_error,
                 "tailwind_available": self.has_tailwind(),
+                "should_use_cdn": self.should_use_cdn(),
                 "system_info": {
                     "platform": platform.system(),
                     "python_version": platform.python_version(),
@@ -152,17 +197,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         }
     
     def get_diagnostics(self) -> Dict:
-        """Diagnóstico completo do sistema"""
+        """Diagnóstico completo do sistema com informações CDN"""
+        try:
+            tailwind_diagnostics = self.tailwind_manager.get_status()
+        except Exception as e:
+            tailwind_diagnostics = {"error": str(e)}
+            
         return {
             "system": platform.system(),
             "platform": platform.platform(),
             "python_version": platform.python_version(),
             "project_root": str(self.project_root.absolute()),
             "initialization_error": self.initialization_error,
-            "tailwind_manager": self.tailwind_manager.get_status(),
+            "tailwind_manager": tailwind_diagnostics,
             "directories": {
                 "assets_exists": self.tailwind_manager.assets_dir.exists(),
                 "css_exists": self.tailwind_manager.css_dir.exists(),
                 "project_root_exists": self.project_root.exists()
+            },
+            "cdn_info": {
+                "should_use_cdn": self.should_use_cdn(),
+                "cdn_html_length": len(self.get_cdn_html()),
+                "has_emergency_fallback": True
             }
         }

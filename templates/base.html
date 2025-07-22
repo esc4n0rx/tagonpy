@@ -5,33 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title or "TagonPy" }}</title>
     
-    <!-- Tailwind CSS -->
-    {% if assets and assets.tailwind_css %}
-    <style>
-        /* Tailwind CSS compilado */
-        {{ assets.tailwind_css | safe }}
-    </style>
+    <!-- ESTRATÉGIA INTELIGENTE DE TAILWIND CSS -->
+    {% if assets and assets.tailwind_css and assets.tailwind_css|length > 100 %}
+        <!-- CSS Local Compilado Disponível -->
+        <style>
+            /* Tailwind CSS compilado localmente */
+            {{ assets.tailwind_css | safe }}
+        </style>
+        <script>
+            console.log('🎨 Tailwind CSS carregado via compilação local');
+        </script>
+    {% elif assets and assets.cdn_html %}
+        <!-- CDN Fallback -->
+        {{ assets.cdn_html | safe }}
     {% else %}
-    <!-- Fallback: Tailwind via CDN para desenvolvimento inicial -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'tagonpy': {
-                            50: '#f0f9ff',
-                            500: '#3b82f6',
-                            900: '#1e3a8a'
+        <!-- Fallback Final: CDN Direto -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script>
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        colors: {
+                            'tagonpy': {
+                                50: '#f0f9ff',
+                                500: '#3b82f6',
+                                900: '#1e3a8a'
+                            }
                         }
                     }
-                }
-            }
-        }
-    </script>
+                },
+                darkMode: 'class'
+            };
+            console.log('🎨 Tailwind CSS carregado via CDN fallback direto');
+        </script>
     {% endif %}
     
-    <!-- CSS do componente (fallback) -->
+    <!-- CSS do componente (sempre aplicado) -->
     {% if component_css %}
     <style>
         /* CSS do componente */
@@ -40,18 +49,18 @@
     {% endif %}
 </head>
 <body class="bg-gray-50 dark:bg-gray-900">
-    <!-- Notificação de status do Tailwind -->
+    <!-- Status do Tailwind -->
     <div id="tailwind-status" class="fixed top-4 right-4 z-50 hidden">
-        <div class="bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
-            🎨 Tailwind CSS ativo
+        <div class="bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium">
+            ✅ Tailwind CSS Ativo
         </div>
     </div>
     
     {{ content | safe }}
     
-    <!-- Live Reload Script com suporte a Tailwind -->
+    <!-- Live Reload Script Melhorado -->
     <script>
-        console.log('🔗 Iniciando TagonPy Live Reload com Tailwind...');
+        console.log('🔗 Iniciando TagonPy Live Reload...');
         
         let ws;
         let reconnectInterval = 1000;
@@ -71,125 +80,140 @@
                 };
                 
                 ws.onmessage = function(event) {
-                    console.log('📨 Mensagem recebida:', event.data);
-                    
                     if (event.data === 'reload') {
                         console.log('🔄 Recarregando página...');
                         showReloadNotification();
-                        setTimeout(() => {
-                            location.reload();
-                        }, 500);
-                    } else if (event.data === 'css-updated') {
-                        console.log('🎨 CSS atualizado, recarregando...');
-                        showCssUpdateNotification();
-                        setTimeout(() => {
-                            location.reload();
-                        }, 300);
-                    }
-                };
-                
-                ws.onclose = function() {
-                    console.log('❌ Conexão perdida. Tentando reconectar...');
-                    showConnectionStatus('disconnected');
-                    scheduleReconnect();
-                };
-                
-                ws.onerror = function(error) {
-                    console.error('🚨 Erro no WebSocket:', error);
-                    showConnectionStatus('error');
-                };
-                
-            } catch (error) {
-                console.error('🚨 Erro ao conectar:', error);
-                scheduleReconnect();
-            }
-        }
-        
-        function scheduleReconnect() {
-            reconnectAttempts++;
-            console.log(`🔄 Tentativa de reconexão ${reconnectAttempts} em ${reconnectInterval}ms`);
-            
-            setTimeout(() => {
-                connect();
-            }, reconnectInterval);
-            
-            reconnectInterval = Math.min(reconnectInterval * 1.5, maxReconnectInterval);
-        }
-        
-        function showConnectionStatus(status) {
-            const existingIndicator = document.getElementById('tagonpy-status');
-            if (existingIndicator) {
-                existingIndicator.remove();
-            }
-            
-            const indicator = document.createElement('div');
-            indicator.id = 'tagonpy-status';
-            indicator.className = 'fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300';
-            
-            if (status === 'connected') {
-                indicator.className += ' bg-green-500 text-white';
-                indicator.textContent = '🟢 Live Reload ON';
-            } else if (status === 'disconnected') {
-                indicator.className += ' bg-red-500 text-white';
-                indicator.textContent = '🔴 Reconnecting...';
-            } else {
-                indicator.className += ' bg-yellow-500 text-white';
-                indicator.textContent = '🟡 Connection Error';
-            }
-            
-            document.body.appendChild(indicator);
-            
-            if (status === 'connected') {
-                setTimeout(() => {
-                    if (indicator && indicator.parentNode) {
-                        indicator.style.opacity = '0';
-                        setTimeout(() => {
-                            if (indicator && indicator.parentNode) {
-                                indicator.remove();
-                            }
-                        }, 300);
-                    }
-                }, 3000);
-            }
-        }
-        
-        function showTailwindStatus() {
-            const status = document.getElementById('tailwind-status');
-            if (status) {
-                status.classList.remove('hidden');
-                setTimeout(() => {
-                    status.classList.add('hidden');
-                }, 3000);
-            }
-        }
-        
-        function showReloadNotification() {
-            const notification = document.createElement('div');
-            notification.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-blue-500 text-white px-6 py-4 rounded-lg shadow-xl font-medium';
-            notification.innerHTML = '🔄 Atualizando componente...';
-            
-            document.body.appendChild(notification);
-        }
-        
-        function showCssUpdateNotification() {
-            const notification = document.createElement('div');
-            notification.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-purple-500 text-white px-6 py-4 rounded-lg shadow-xl font-medium';
-            notification.innerHTML = '🎨 Tailwind CSS atualizado...';
-            
-            document.body.appendChild(notification);
-        }
-        
-        connect();
-        
-        // Log do status do Tailwind
-        setTimeout(() => {
-            const hasTailwind = document.querySelector('style') || document.querySelector('script[src*="tailwind"]');
-            if (hasTailwind) {
-                console.log('✅ Tailwind CSS carregado');
-            } else {
-                console.warn('⚠️ Tailwind CSS não detectado');
-            }
-        }, 1000);
-    </script>
+                        setTimeout(() => location.reload(), 500);
+                   } else if (event.data === 'css-updated') {
+                       console.log('🎨 CSS atualizado, recarregando...');
+                       showCssUpdateNotification();
+                       setTimeout(() => location.reload(), 300);
+                   }
+               };
+               
+               ws.onclose = function() {
+                   console.log('❌ Conexão perdida. Tentando reconectar...');
+                   showConnectionStatus('disconnected');
+                   scheduleReconnect();
+               };
+               
+               ws.onerror = function(error) {
+                   console.error('🚨 Erro no WebSocket:', error);
+                   showConnectionStatus('error');
+               };
+               
+           } catch (error) {
+               console.error('🚨 Erro ao conectar:', error);
+               scheduleReconnect();
+           }
+       }
+       
+       function scheduleReconnect() {
+           reconnectAttempts++;
+           setTimeout(() => connect(), reconnectInterval);
+           reconnectInterval = Math.min(reconnectInterval * 1.5, maxReconnectInterval);
+       }
+       
+       function showConnectionStatus(status) {
+           const existingIndicator = document.getElementById('tagonpy-status');
+           if (existingIndicator) existingIndicator.remove();
+           
+           const indicator = document.createElement('div');
+           indicator.id = 'tagonpy-status';
+           indicator.className = 'fixed top-4 left-4 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300';
+           
+           if (status === 'connected') {
+               indicator.className += ' bg-green-500 text-white';
+               indicator.textContent = '🟢 Live Reload ON';
+           } else if (status === 'disconnected') {
+               indicator.className += ' bg-red-500 text-white';
+               indicator.textContent = '🔴 Reconnecting...';
+           } else {
+               indicator.className += ' bg-yellow-500 text-white';
+               indicator.textContent = '🟡 Connection Error';
+           }
+           
+           document.body.appendChild(indicator);
+           
+           if (status === 'connected') {
+               setTimeout(() => {
+                   if (indicator && indicator.parentNode) {
+                       indicator.style.opacity = '0';
+                       setTimeout(() => {
+                           if (indicator && indicator.parentNode) indicator.remove();
+                       }, 300);
+                   }
+               }, 3000);
+           }
+       }
+       
+       function showTailwindStatus() {
+           const status = document.getElementById('tailwind-status');
+           if (status) {
+               status.classList.remove('hidden');
+               setTimeout(() => status.classList.add('hidden'), 3000);
+           }
+       }
+       
+       function showReloadNotification() {
+           const notification = document.createElement('div');
+           notification.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-blue-500 text-white px-6 py-4 rounded-lg shadow-xl font-medium';
+           notification.innerHTML = '🔄 Atualizando componente...';
+           document.body.appendChild(notification);
+       }
+       
+       function showCssUpdateNotification() {
+           const notification = document.createElement('div');
+           notification.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-purple-500 text-white px-6 py-4 rounded-lg shadow-xl font-medium';
+           notification.innerHTML = '🎨 Tailwind CSS atualizado...';
+           document.body.appendChild(notification);
+       }
+       
+       // Testa disponibilidade do Tailwind após carregamento
+       setTimeout(() => {
+           const tailwindTest = document.createElement('div');
+           tailwindTest.className = 'hidden';
+           document.body.appendChild(tailwindTest);
+           
+           const computedStyle = window.getComputedStyle(tailwindTest);
+           const tailwindWorking = computedStyle.display === 'none';
+           
+           if (tailwindWorking) {
+               console.log('✅ Tailwind CSS funcionando corretamente');
+               showTailwindSuccessMessage();
+           } else {
+               console.warn('⚠️ Tailwind CSS pode não estar funcionando');
+               showTailwindWarningMessage();
+           }
+           
+           document.body.removeChild(tailwindTest);
+       }, 1000);
+       
+       function showTailwindSuccessMessage() {
+           const message = document.createElement('div');
+           message.className = 'fixed bottom-4 right-4 z-50 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium';
+           message.innerHTML = '✅ Tailwind CSS OK';
+           document.body.appendChild(message);
+           
+           setTimeout(() => {
+               message.style.opacity = '0';
+               setTimeout(() => message.remove(), 300);
+           }, 2000);
+       }
+       
+       function showTailwindWarningMessage() {
+           const message = document.createElement('div');
+           message.className = 'fixed bottom-4 right-4 z-50 bg-yellow-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium';
+           message.innerHTML = '⚠️ Tailwind Issues';
+           document.body.appendChild(message);
+           
+           setTimeout(() => {
+               message.style.opacity = '0';
+               setTimeout(() => message.remove(), 300);
+           }, 4000);
+       }
+       
+       connect();
+   </script>
 </body>
 </html>
