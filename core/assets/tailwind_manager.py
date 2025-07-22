@@ -48,6 +48,13 @@ class TailwindManager:
         
         print(f"✅ Node.js encontrado: {node_check['version']}")
         
+        # Verifica se npx está disponível
+        npx_check = await self._check_npx()
+        if not npx_check["available"]:
+            print(f"⚠️ NPX não encontrado: {npx_check['error']}")
+        else:
+            print(f"✅ NPX encontrado: {npx_check['version']}")
+        
         # Cria estrutura de diretórios
         await self._create_directory_structure()
         
@@ -60,7 +67,7 @@ class TailwindManager:
         # Cria arquivos de configuração
         await self._create_config_files()
         
-        # Build inicial (CORRIGIDO)
+        # Build inicial (CORRIGIDO COM MÚLTIPLAS ESTRATÉGIAS)
         await self._initial_build()
         
         self.is_initialized = True
@@ -116,6 +123,50 @@ class TailwindManager:
                 "error": str(e)
             }
     
+    async def _check_npx(self) -> Dict[str, Any]:
+        """NOVO: Verifica se NPX está disponível"""
+        try:
+            print("🔍 Verificando NPX...")
+            
+            if self.is_windows:
+                cmd = "npx --version"
+                result = await asyncio.create_subprocess_shell(
+                    cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    shell=True
+                )
+            else:
+                result = await asyncio.create_subprocess_exec(
+                    "npx", "--version",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            
+            stdout, stderr = await result.communicate()
+            
+            if result.returncode == 0:
+                version = stdout.decode().strip()
+                return {
+                    "available": True,
+                    "version": version,
+                    "error": None
+                }
+            else:
+                error = stderr.decode().strip()
+                return {
+                    "available": False,
+                    "version": None,
+                    "error": error
+                }
+                
+        except Exception as e:
+            return {
+                "available": False,
+                "version": None,
+                "error": str(e)
+            }
+    
     async def _create_directory_structure(self):
         """Cria estrutura de diretórios necessária"""
         print("📂 Criando estrutura de diretórios...")
@@ -124,28 +175,38 @@ class TailwindManager:
         print(f"✅ Diretórios criados: {self.assets_dir}")
     
     async def _create_package_json(self):
-        """Cria package.json se não existir"""
+        """Cria package.json se não existir - CORRIGIDO COM NPXS"""
         if self.package_json.exists():
-            print("📦 package.json já existe")
-            return
-            
-        print("📦 Criando package.json...")
-        package_config = {
-            "name": "tagonpy-project",
-            "version": "1.0.0",
-            "description": "TagonPy project with Tailwind CSS",
-            "scripts": {
-                "build-css": "tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css",
-                "watch-css": "tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --watch",
-                "build-css-prod": "tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --minify"
-            },
-            "devDependencies": {}
+            print("📦 package.json já existe - atualizando scripts...")
+            # Carrega package.json existente e atualiza scripts
+            try:
+                with open(self.package_json, 'r', encoding='utf-8') as f:
+                    package_config = json.load(f)
+            except:
+                package_config = {}
+        else:
+            print("📦 Criando package.json...")
+            package_config = {
+                "name": "tagonpy-project",
+                "version": "1.0.0",
+                "description": "TagonPy project with Tailwind CSS"
+            }
+        
+        # CORREÇÃO: Scripts usando npx para maior compatibilidade
+        package_config["scripts"] = {
+            "build-css": "npx tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css",
+            "watch-css": "npx tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --watch",
+            "build-css-prod": "npx tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --minify"
         }
+        
+        # Garante que devDependencies existe
+        if "devDependencies" not in package_config:
+            package_config["devDependencies"] = {}
         
         with open(self.package_json, 'w', encoding='utf-8') as f:
             json.dump(package_config, f, indent=2)
         
-        print("✅ package.json criado")
+        print("✅ package.json criado/atualizado com scripts npx")
     
     async def _install_tailwind(self):
         """Instala Tailwind CSS via npm (versão corrigida para Windows)"""
@@ -154,7 +215,7 @@ class TailwindManager:
         try:
             if self.is_windows:
                 # Windows: usar shell=True
-                cmd = "npm install -D tailwindcss"
+                cmd = "npm install -D tailwindcss@latest"
                 print(f"🔧 Executando: {cmd}")
                 
                 process = await asyncio.create_subprocess_shell(
@@ -167,7 +228,7 @@ class TailwindManager:
             else:
                 # Unix/Linux/macOS
                 process = await asyncio.create_subprocess_exec(
-                    "npm", "install", "-D", "tailwindcss",
+                    "npm", "install", "-D", "tailwindcss@latest",
                     cwd=self.project_root,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
@@ -251,51 +312,39 @@ module.exports = {
         
         print("✅ Arquivos de configuração criados")
     
-    def _get_tailwind_executable(self):
-        """
-        Retorna o caminho para o executável do Tailwind (CORRIGIDO para Windows)
-        """
-        if self.is_windows:
-            # Windows: tenta diferentes caminhos
-            possible_paths = [
-                self.node_modules_bin / "tailwindcss.cmd",
-                self.node_modules_bin / "tailwindcss.exe", 
-                self.node_modules_bin / "tailwindcss"
-            ]
-            
-            for path in possible_paths:
-                if path.exists():
-                    print(f"✅ Encontrado executável Tailwind: {path}")
-                    return str(path)
-            
-            # Fallback para npm run
-            print("⚠️ Executável direto não encontrado, usando npm run")
-            return None
-        else:
-            # Unix/Linux/macOS
-            tailwind_bin = self.node_modules_bin / "tailwindcss"
-            if tailwind_bin.exists():
-                return str(tailwind_bin)
-            return None
-    
     async def _initial_build(self):
-        """Executa build inicial do CSS - VERSÃO FINAL CORRIGIDA PARA WINDOWS"""
-        print("🔨 Executando build inicial...")
+        """
+        Executa build inicial do CSS - VERSÃO FINAL COM MÚLTIPLAS ESTRATÉGIAS
+        """
+        print("🔨 Executando build inicial com múltiplas estratégias...")
         
-        try:
-            # CORREÇÃO DEFINITIVA: Usa caminho absoluto do executável
-            if self.is_windows:
-                # Constrói comando com caminhos completos
-                tailwind_exe = self.project_root / "node_modules" / ".bin" / "tailwindcss.cmd"
-                
-                if tailwind_exe.exists():
-                    cmd = f'"{tailwind_exe.absolute()}" -i "{self.input_css.absolute()}" -o "{self.output_css.absolute()}"'
-                    print(f"🔧 Executando Windows: {cmd}")
+        strategies = [
+            ("NPX Direto", self._build_with_npx_direct),
+            ("NPM Script", self._build_with_npm_script),
+            ("Node_modules Local", self._build_with_local_executable),
+        ]
+        
+        for strategy_name, strategy_func in strategies:
+            print(f"🔧 Tentando estratégia: {strategy_name}")
+            try:
+                success = await strategy_func()
+                if success:
+                    print(f"✅ Sucesso com estratégia: {strategy_name}")
+                    return
                 else:
-                    # Fallback: tenta via npm script
-                    cmd = "npm run build-css"
-                    print(f"🔧 Fallback Windows: {cmd}")
-                
+                    print(f"⚠️ Falhou com estratégia: {strategy_name}")
+            except Exception as e:
+                print(f"❌ Erro com estratégia {strategy_name}: {str(e)}")
+        
+        # Se todas as estratégias falharam, cria fallback
+        print("🔧 Todas as estratégias falharam, criando CSS de fallback...")
+        await self._create_fallback_css()
+    
+    async def _build_with_npx_direct(self) -> bool:
+        """Estratégia 1: NPX direto"""
+        try:
+            if self.is_windows:
+                cmd = f"npx tailwindcss -i \"{self.input_css.absolute()}\" -o \"{self.output_css.absolute()}\""
                 process = await asyncio.create_subprocess_shell(
                     cmd,
                     cwd=self.project_root,
@@ -304,7 +353,6 @@ module.exports = {
                     shell=True
                 )
             else:
-                # Unix/Linux/macOS
                 process = await asyncio.create_subprocess_exec(
                     "npx", "tailwindcss", 
                     "-i", str(self.input_css),
@@ -316,27 +364,114 @@ module.exports = {
             
             stdout, stderr = await process.communicate()
             
-            if process.returncode != 0:
-                error_msg = stderr.decode('utf-8', errors='ignore').strip()
-                print(f"❌ Erro no build: {error_msg}")
-                print(f"❌ stdout: {stdout.decode('utf-8', errors='ignore')}")
-                
-                # Cria CSS de fallback se build falhar
-                print("🔧 Criando CSS de fallback...")
-                await self._create_fallback_css()
+            if process.returncode == 0 and self.output_css.exists():
+                size = self.output_css.stat().st_size
+                print(f"✅ NPX Direct - CSS compilado: {size} bytes")
+                return True
             else:
-                # Verifica se arquivo foi criado
-                if self.output_css.exists():
-                    size = self.output_css.stat().st_size
-                    print(f"✅ CSS compilado com sucesso: {self.output_css} ({size} bytes)")
-                else:
-                    print("⚠️ Arquivo CSS não foi gerado, criando fallback...")
-                    await self._create_fallback_css()
+                print(f"❌ NPX Direct falhou: {stderr.decode('utf-8', errors='ignore')}")
+                return False
                 
         except Exception as e:
-            print(f"❌ Exceção durante build inicial: {str(e)}")
-            print("🔧 Criando CSS de fallback...")
-            await self._create_fallback_css()
+            print(f"❌ Exceção NPX Direct: {str(e)}")
+            return False
+    
+    async def _build_with_npm_script(self) -> bool:
+        """Estratégia 2: NPM Script"""
+        try:
+            if self.is_windows:
+                cmd = "npm run build-css"
+                process = await asyncio.create_subprocess_shell(
+                    cmd,
+                    cwd=self.project_root,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    shell=True
+                )
+            else:
+                process = await asyncio.create_subprocess_exec(
+                    "npm", "run", "build-css",
+                    cwd=self.project_root,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0 and self.output_css.exists():
+                size = self.output_css.stat().st_size
+                print(f"✅ NPM Script - CSS compilado: {size} bytes")
+                return True
+            else:
+                print(f"❌ NPM Script falhou: {stderr.decode('utf-8', errors='ignore')}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Exceção NPM Script: {str(e)}")
+            return False
+    
+    async def _build_with_local_executable(self) -> bool:
+        """Estratégia 3: Executável local do node_modules"""
+        try:
+            # Procura executáveis no node_modules/.bin
+            possible_executables = []
+            
+            if self.is_windows:
+                possible_executables = [
+                    self.node_modules_bin / "tailwindcss.cmd",
+                    self.node_modules_bin / "tailwindcss.bat",
+                    self.node_modules_bin / "tailwindcss.exe",
+                    self.node_modules_bin / "tailwindcss"
+                ]
+            else:
+                possible_executables = [
+                    self.node_modules_bin / "tailwindcss"
+                ]
+            
+            tailwind_exec = None
+            for executable in possible_executables:
+                if executable.exists():
+                    tailwind_exec = executable
+                    break
+            
+            if not tailwind_exec:
+                print("❌ Nenhum executável Tailwind encontrado em node_modules")
+                return False
+            
+            print(f"✅ Encontrado executável: {tailwind_exec}")
+            
+            if self.is_windows:
+                cmd = f"\"{tailwind_exec.absolute()}\" -i \"{self.input_css.absolute()}\" -o \"{self.output_css.absolute()}\""
+                process = await asyncio.create_subprocess_shell(
+                    cmd,
+                    cwd=self.project_root,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    shell=True
+                )
+            else:
+                process = await asyncio.create_subprocess_exec(
+                    str(tailwind_exec),
+                    "-i", str(self.input_css),
+                    "-o", str(self.output_css),
+                    cwd=self.project_root,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0 and self.output_css.exists():
+                size = self.output_css.stat().st_size
+                print(f"✅ Executável Local - CSS compilado: {size} bytes")
+                return True
+            else:
+                print(f"❌ Executável Local falhou: {stderr.decode('utf-8', errors='ignore')}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Exceção Executável Local: {str(e)}")
+            return False
     
     async def _create_fallback_css(self):
         """Cria CSS de fallback quando build falha"""
@@ -369,6 +504,9 @@ body {
 .bg-yellow-400 { background-color: rgb(250 204 21); }
 .bg-purple-400 { background-color: rgb(196 181 253); }
 .bg-cyan-400 { background-color: rgb(34 211 238); }
+.bg-cyan-500 { background-color: rgb(6 182 212); }
+.bg-green-500 { background-color: rgb(34 197 94); }
+.bg-yellow-500 { background-color: rgb(234 179 8); }
 
 /* Cores de texto */
 .text-white { color: rgb(255 255 255); }
@@ -378,6 +516,8 @@ body {
 .text-green-400 { color: rgb(74 222 128); }
 .text-yellow-400 { color: rgb(250 204 21); }
 .text-purple-400 { color: rgb(196 181 253); }
+.text-cyan-400 { color: rgb(34 211 238); }
+.text-transparent { color: transparent; }
 
 /* Layout */
 .container { 
@@ -453,9 +593,8 @@ body {
 /* Hover states */
 .hover\\:bg-gray-750:hover { background-color: #374151; }
 
-/* Gradientes (simplificado) */
+/* Gradientes */
 .bg-gradient-to-r { 
-  background: linear-gradient(to right, var(--tw-gradient-stops));
   background: linear-gradient(to right, rgb(96 165 250), rgb(34 211 238));
 }
 
@@ -463,8 +602,6 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
 }
-
-.text-transparent { color: transparent; }
 
 /* Responsivo básico */
 @media (max-width: 767px) {
@@ -486,7 +623,7 @@ body {
     
     async def start_watch_mode(self):
         """
-        Inicia o modo watch do Tailwind CSS (versão corrigida para Windows)
+        Inicia o modo watch do Tailwind CSS usando a melhor estratégia disponível
         """
         if not self.is_initialized:
             await self.initialize()
@@ -497,26 +634,33 @@ body {
         if self.build_process:
             await self.stop_watch_mode()
         
+        # Tenta diferentes estratégias para watch mode
+        strategies = [
+            ("NPX Watch", self._start_watch_with_npx),
+            ("NPM Script Watch", self._start_watch_with_npm_script)
+        ]
+        
+        for strategy_name, strategy_func in strategies:
+            print(f"🔧 Tentando watch com estratégia: {strategy_name}")
+            try:
+                success = await strategy_func()
+                if success:
+                    print(f"✅ Watch ativo com estratégia: {strategy_name}")
+                    # Monitora output do processo em background
+                    asyncio.create_task(self._monitor_build_process())
+                    return
+                else:
+                    print(f"⚠️ Falhou watch com estratégia: {strategy_name}")
+            except Exception as e:
+                print(f"❌ Erro watch com estratégia {strategy_name}: {str(e)}")
+        
+        print("❌ Não foi possível iniciar watch mode")
+    
+    async def _start_watch_with_npx(self) -> bool:
+        """Watch usando NPX direto"""
         try:
-            tailwind_exec = self._get_tailwind_executable()
-            
-            if self.is_windows and tailwind_exec:
-                # Windows: usa executável direto se disponível
-                cmd = f'"{tailwind_exec}" -i "{self.input_css}" -o "{self.output_css}" --watch'
-                print(f"🔧 Executando watch: {cmd}")
-                
-                self.build_process = await asyncio.create_subprocess_shell(
-                    cmd,
-                    cwd=self.project_root,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    shell=True
-                )
-            elif self.is_windows:
-                # Windows: fallback para npm run
-                cmd = "npm run watch-css"
-                print(f"🔧 Executando watch fallback: {cmd}")
-                
+            if self.is_windows:
+                cmd = f"npx tailwindcss -i \"{self.input_css.absolute()}\" -o \"{self.output_css.absolute()}\" --watch"
                 self.build_process = await asyncio.create_subprocess_shell(
                     cmd,
                     cwd=self.project_root,
@@ -525,7 +669,6 @@ body {
                     shell=True
                 )
             else:
-                # Unix/Linux/macOS
                 self.build_process = await asyncio.create_subprocess_exec(
                     "npx", "tailwindcss",
                     "-i", str(self.input_css),
@@ -536,14 +679,49 @@ body {
                     stderr=asyncio.subprocess.PIPE
                 )
             
-            print("✅ Tailwind CSS watch mode ativo")
+            # Aguarda um pouco para ver se o processo inicia corretamente
+            await asyncio.sleep(1)
             
-            # Monitora output do processo em background
-            asyncio.create_task(self._monitor_build_process())
-            
+            if self.build_process.returncode is None:  # Processo ainda rodando
+                return True
+            else:
+                return False
+                
         except Exception as e:
-            print(f"❌ Erro ao iniciar watch mode: {str(e)}")
-            print("⚠️ Continuando sem watch mode...")
+            print(f"❌ Exceção NPX Watch: {str(e)}")
+            return False
+    
+    async def _start_watch_with_npm_script(self) -> bool:
+        """Watch usando NPM Script"""
+        try:
+            if self.is_windows:
+                cmd = "npm run watch-css"
+                self.build_process = await asyncio.create_subprocess_shell(
+                    cmd,
+                    cwd=self.project_root,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    shell=True
+                )
+            else:
+                self.build_process = await asyncio.create_subprocess_exec(
+                    "npm", "run", "watch-css",
+                    cwd=self.project_root,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            
+            # Aguarda um pouco para ver se o processo inicia corretamente
+            await asyncio.sleep(1)
+            
+            if self.build_process.returncode is None:  # Processo ainda rodando
+                return True
+            else:
+                return False
+                
+        except Exception as e:
+            print(f"❌ Exceção NPM Script Watch: {str(e)}")
+            return False
     
     async def stop_watch_mode(self):
         """Para o modo watch"""
@@ -561,119 +739,182 @@ body {
             print("✅ Tailwind CSS watch mode parado")
     
     async def _monitor_build_process(self):
-        """Monitora o processo de build para logs"""
-        if not self.build_process:
-            return
-            
-        print("👀 Monitorando processo de build...")
-        
-        try:
-            while self.build_process.returncode is None:
-                try:
-                    # Lê stdout e stderr
-                    line = await asyncio.wait_for(
-                        self.build_process.stdout.readline(), 
-                        timeout=1.0
-                    )
-                    
-                    if line:
-                        output = line.decode('utf-8', errors='ignore').strip()
-                        if output and not output.startswith('Done in'):
-                            print(f"🎨 Tailwind: {output}")
-                            
-                except asyncio.TimeoutError:
-                    # Timeout é normal, continua monitorando
-                    continue
-                except Exception as e:
-                    print(f"⚠️ Erro no monitoramento: {e}")
-                    break
-                    
-        except Exception as e:
-            print(f"❌ Erro fatal no monitoramento: {e}")
-        
-        print("👀 Monitoramento finalizado")
-    
+       """Monitora o processo de build para logs"""
+       if not self.build_process:
+           return
+           
+       print("👀 Monitorando processo de build...")
+       
+       try:
+           while self.build_process.returncode is None:
+               try:
+                   # Lê stdout e stderr
+                   line = await asyncio.wait_for(
+                       self.build_process.stdout.readline(), 
+                       timeout=1.0
+                   )
+                   
+                   if line:
+                       output = line.decode('utf-8', errors='ignore').strip()
+                       if output and not output.startswith('Done in'):
+                           print(f"🎨 Tailwind: {output}")
+                           
+               except asyncio.TimeoutError:
+                   # Timeout é normal, continua monitorando
+                   continue
+               except Exception as e:
+                   print(f"⚠️ Erro no monitoramento: {e}")
+                   break
+                   
+       except Exception as e:
+           print(f"❌ Erro fatal no monitoramento: {e}")
+       
+       print("👀 Monitoramento finalizado")
+   
     async def build_production(self):
-        """Build de produção com minificação (versão corrigida para Windows)"""
-        print("🚀 Executando build de produção...")
-        
-        try:
-            tailwind_exec = self._get_tailwind_executable()
-            
-            if self.is_windows and tailwind_exec:
-                cmd = f'"{tailwind_exec}" -i "{self.input_css}" -o "{self.output_css}" --minify'
-                print(f"🔧 Executando: {cmd}")
-                
-                process = await asyncio.create_subprocess_shell(
-                    cmd,
-                    cwd=self.project_root,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    shell=True
-                )
-            elif self.is_windows:
-                cmd = "npm run build-css-prod"
-                print(f"🔧 Executando: {cmd}")
-                
-                process = await asyncio.create_subprocess_shell(
-                    cmd,
-                    cwd=self.project_root,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    shell=True
-                )
-            else:
-                process = await asyncio.create_subprocess_exec(
-                    "npx", "tailwindcss",
-                    "-i", str(self.input_css),
-                    "-o", str(self.output_css),
-                    "--minify",
-                    cwd=self.project_root,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-            
-            stdout, stderr = await process.communicate()
-            
-            if process.returncode == 0:
-                # Calcula tamanho do arquivo
-                size = self.output_css.stat().st_size
-                size_kb = size / 1024
-                print(f"✅ Build de produção concluído: {size_kb:.1f}KB")
-            else:
-                error_msg = stderr.decode('utf-8', errors='ignore').strip()
-                print(f"❌ Erro no build de produção: {error_msg}")
-                raise Exception(f"Erro no build de produção: {error_msg}")
-                
-        except Exception as e:
-            print(f"❌ Exceção durante build de produção: {str(e)}")
-            raise
-    
+       """Build de produção com minificação usando múltiplas estratégias"""
+       print("🚀 Executando build de produção...")
+       
+       strategies = [
+           ("NPX Production", self._build_production_with_npx),
+           ("NPM Script Production", self._build_production_with_npm_script),
+       ]
+       
+       for strategy_name, strategy_func in strategies:
+           print(f"🔧 Tentando build de produção: {strategy_name}")
+           try:
+               success = await strategy_func()
+               if success:
+                   print(f"✅ Sucesso build de produção: {strategy_name}")
+                   return
+               else:
+                   print(f"⚠️ Falhou build de produção: {strategy_name}")
+           except Exception as e:
+               print(f"❌ Erro build de produção {strategy_name}: {str(e)}")
+       
+       print("❌ Não foi possível executar build de produção")
+       raise Exception("Falha em todas as estratégias de build de produção")
+   
+    async def _build_production_with_npx(self) -> bool:
+       """Build de produção usando NPX"""
+       try:
+           if self.is_windows:
+               cmd = f"npx tailwindcss -i \"{self.input_css.absolute()}\" -o \"{self.output_css.absolute()}\" --minify"
+               process = await asyncio.create_subprocess_shell(
+                   cmd,
+                   cwd=self.project_root,
+                   stdout=asyncio.subprocess.PIPE,
+                   stderr=asyncio.subprocess.PIPE,
+                   shell=True
+               )
+           else:
+               process = await asyncio.create_subprocess_exec(
+                   "npx", "tailwindcss",
+                   "-i", str(self.input_css),
+                   "-o", str(self.output_css),
+                   "--minify",
+                   cwd=self.project_root,
+                   stdout=asyncio.subprocess.PIPE,
+                   stderr=asyncio.subprocess.PIPE
+               )
+           
+           stdout, stderr = await process.communicate()
+           
+           if process.returncode == 0 and self.output_css.exists():
+               size = self.output_css.stat().st_size
+               size_kb = size / 1024
+               print(f"✅ NPX Production - CSS minificado: {size_kb:.1f}KB")
+               return True
+           else:
+               print(f"❌ NPX Production falhou: {stderr.decode('utf-8', errors='ignore')}")
+               return False
+               
+       except Exception as e:
+           print(f"❌ Exceção NPX Production: {str(e)}")
+           return False
+   
+    async def _build_production_with_npm_script(self) -> bool:
+       """Build de produção usando NPM Script"""
+       try:
+           if self.is_windows:
+               cmd = "npm run build-css-prod"
+               process = await asyncio.create_subprocess_shell(
+                   cmd,
+                   cwd=self.project_root,
+                   stdout=asyncio.subprocess.PIPE,
+                   stderr=asyncio.subprocess.PIPE,
+                   shell=True
+               )
+           else:
+               process = await asyncio.create_subprocess_exec(
+                   "npm", "run", "build-css-prod",
+                   cwd=self.project_root,
+                   stdout=asyncio.subprocess.PIPE,
+                   stderr=asyncio.subprocess.PIPE
+               )
+           
+           stdout, stderr = await process.communicate()
+           
+           if process.returncode == 0 and self.output_css.exists():
+               size = self.output_css.stat().st_size
+               size_kb = size / 1024
+               print(f"✅ NPM Script Production - CSS minificado: {size_kb:.1f}KB")
+               return True
+           else:
+               print(f"❌ NPM Script Production falhou: {stderr.decode('utf-8', errors='ignore')}")
+               return False
+               
+       except Exception as e:
+           print(f"❌ Exceção NPM Script Production: {str(e)}")
+           return False
+   
     def get_css_content(self) -> str:
-        """Retorna conteúdo do CSS compilado"""
-        try:
-            if self.output_css.exists():
-                with open(self.output_css, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    print(f"📖 CSS carregado: {len(content)} caracteres")
-                    return content
-            else:
-                print("⚠️ Arquivo CSS compilado não encontrado")
-                return ""
-        except Exception as e:
-            print(f"❌ Erro ao ler CSS: {str(e)}")
-            return ""
-    
+       """Retorna conteúdo do CSS compilado"""
+       try:
+           if self.output_css.exists():
+               with open(self.output_css, 'r', encoding='utf-8') as f:
+                   content = f.read()
+                   print(f"📖 CSS carregado: {len(content)} caracteres")
+                   return content
+           else:
+               print("⚠️ Arquivo CSS compilado não encontrado")
+               return ""
+       except Exception as e:
+           print(f"❌ Erro ao ler CSS: {str(e)}")
+           return ""
+   
     def get_status(self) -> Dict[str, Any]:
-        """Retorna status do Tailwind"""
-        return {
-            "initialized": self.is_initialized,
-            "watching": self.build_process is not None,
-            "config_exists": self.config_file.exists(),
-            "input_css_exists": self.input_css.exists(),
-            "output_css_exists": self.output_css.exists(),
-            "output_css_size": self.output_css.stat().st_size if self.output_css.exists() else 0,
-            "system": platform.system(),
-            "project_root": str(self.project_root.absolute()),
-            "tailwind_executable": self._get_tailwind_executable()
-        }
+       """Retorna status detalhado do Tailwind"""
+       return {
+           "initialized": self.is_initialized,
+           "watching": self.build_process is not None,
+           "config_exists": self.config_file.exists(),
+           "input_css_exists": self.input_css.exists(),
+           "output_css_exists": self.output_css.exists(),
+           "output_css_size": self.output_css.stat().st_size if self.output_css.exists() else 0,
+           "system": platform.system(),
+           "project_root": str(self.project_root.absolute()),
+           "node_modules_exists": self.node_modules_bin.exists(),
+           "possible_executables": self._get_available_executables()
+       }
+   
+    def _get_available_executables(self) -> Dict[str, bool]:
+       """Verifica quais executáveis estão disponíveis"""
+       executables = {}
+       
+       if self.is_windows:
+           possible_paths = [
+               self.node_modules_bin / "tailwindcss.cmd",
+               self.node_modules_bin / "tailwindcss.bat",
+               self.node_modules_bin / "tailwindcss.exe",
+               self.node_modules_bin / "tailwindcss"
+           ]
+       else:
+           possible_paths = [
+               self.node_modules_bin / "tailwindcss"
+           ]
+       
+       for path in possible_paths:
+           executables[str(path.name)] = path.exists()
+       
+       return executables
