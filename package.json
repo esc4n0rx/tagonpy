@@ -1,0 +1,13 @@
+{
+  "name": "tagonpy-project",
+  "version": "1.0.0",
+  "description": "TagonPy project with Tailwind CSS",
+  "scripts": {
+    "build-css": "tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css",
+    "watch-css": "tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --watch",
+    "build-css-prod": "tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^4.1.11"
+  }
+}

@@ -10,28 +10,29 @@ from watchdog.events import FileSystemEventHandler
 import uvicorn
 import time
 
-# NOVO: Imports do sistema de roteamento
+# NOVO: Imports do sistema de assets
+from core.assets import AssetBuilder
 from core.routing import RouterManager
-from core.middlewares import LoggingMiddleware, CorsMiddleware, AuthMiddleware
+from core.middlewares import LoggingMiddleware, CorsMiddleware, AuthMiddleware, AssetsMiddleware
 
 class TagonFileHandler(FileSystemEventHandler):
-    """Handler para monitorar mudanças em arquivos .tg e .css"""
+    """Handler para monitorar mudanças em arquivos .tg, .css e assets"""
     
     def __init__(self, server_instance):
         self.server = server_instance
         self.last_modified = {}
-        self.debounce_time = 0.5  # 500ms de debounce
+        self.debounce_time = 0.5
     
     def on_modified(self, event):
         """Callback quando um arquivo é modificado"""
         if not event.is_directory and (
             event.src_path.endswith('.tg') or 
             event.src_path.endswith('.css') or 
-            event.src_path.endswith('.py')
+            event.src_path.endswith('.py') or
+            'assets/' in event.src_path  # NOVO: monitora pasta assets
         ):
             current_time = time.time()
             
-            # Debounce - evita múltiplos reloads
             if (event.src_path not in self.last_modified or 
                 current_time - self.last_modified[event.src_path] > self.debounce_time):
                 
@@ -39,20 +40,23 @@ class TagonFileHandler(FileSystemEventHandler):
                 file_name = os.path.basename(event.src_path)
                 file_ext = os.path.splitext(event.src_path)[1]
                 
-                if file_ext == '.css':
+                # NOVO: Detecta mudanças no CSS de assets
+                if 'assets/' in event.src_path and file_ext == '.css':
+                    print(f"🎨 Tailwind CSS modificado: {file_name}")
+                    # Envia evento específico para CSS
+                    asyncio.create_task(self.server.broadcast_css_update())
+                elif file_ext == '.css':
                     print(f"🎨 CSS modificado: {file_name}")
+                    asyncio.create_task(self.server.broadcast_reload())
                 elif file_ext == '.tg':
                     print(f"🏷️ Componente modificado: {file_name}")
+                    asyncio.create_task(self.server.broadcast_reload())
                 else:
                     print(f"🔄 Arquivo modificado: {file_name}")
-                
-                print(f"📡 Enviando sinal de reload para {len(self.server.websocket_connections)} cliente(s)")
-                
-                # Envia sinal de reload para WebSocket
-                asyncio.create_task(self.server.broadcast_reload())
+                    asyncio.create_task(self.server.broadcast_reload())
 
 class TagonServer:
-    """Servidor de desenvolvimento do TagonPy com roteamento avançado"""
+    """Servidor de desenvolvimento do TagonPy com suporte ao Tailwind CSS"""
     
     def __init__(self, 
                  host: str = "localhost", 
@@ -68,7 +72,10 @@ class TagonServer:
         self.websocket_connections = set()
         self.file_observer = None
         
-        # NOVO: Sistema de roteamento avançado
+        # NOVO: Sistema de assets com Tailwind
+        self.asset_builder = AssetBuilder()
+        
+        # Sistema de roteamento avançado
         self.router_manager = RouterManager(
             app=self.app,
             pages_dir=pages_dir,
@@ -82,23 +89,71 @@ class TagonServer:
         self._setup_file_watcher()
     
     def _setup_middlewares(self):
-        """NOVO: Configura middlewares do sistema"""
+        """MODIFICADO: Configura middlewares incluindo assets"""
         # Registra middlewares padrão
         logging_middleware = LoggingMiddleware(log_level="INFO")
         cors_middleware = CorsMiddleware()
         auth_middleware = AuthMiddleware()
+        assets_middleware = AssetsMiddleware(self.asset_builder)  # NOVO
         
         self.router_manager.middleware_chain.register_middleware(logging_middleware, priority=1)
         self.router_manager.middleware_chain.register_middleware(cors_middleware, priority=5)
         self.router_manager.middleware_chain.register_middleware(auth_middleware, priority=10)
+        self.router_manager.middleware_chain.register_middleware(assets_middleware, priority=20)  # NOVO
         
         # Registra no router manager
         self.router_manager.register_middleware("logging", logging_middleware.before_request)
         self.router_manager.register_middleware("cors", cors_middleware.before_request)
         self.router_manager.register_middleware("auth", auth_middleware.before_request)
+        self.router_manager.register_middleware("assets", assets_middleware.before_request)  # NOVO
     
     def _setup_api_routes(self):
-        """Configura rotas da API de desenvolvimento"""
+        """MODIFICADO: Configura rotas da API incluindo assets"""
+        @self.app.get("/api/assets/diagnostics")
+        async def get_full_diagnostics():
+            """Diagnóstico completo do sistema de assets"""
+            return self.asset_builder.get_diagnostics()
+        
+        # NOVO: API para testar Node.js
+        @self.app.get("/api/system/nodejs")
+        async def test_nodejs():
+            """Testa disponibilidade do Node.js"""
+            try:
+                import subprocess
+                import platform
+                
+                is_windows = platform.system().lower() == "windows"
+                
+                if is_windows:
+                    result = subprocess.run(
+                        "node --version", 
+                        shell=True, 
+                        capture_output=True, 
+                        text=True, 
+                        timeout=10
+                    )
+                else:
+                    result = subprocess.run(
+                        ["node", "--version"], 
+                        capture_output=True, 
+                        text=True, 
+                        timeout=10
+                    )
+                
+                return {
+                    "available": result.returncode == 0,
+                    "version": result.stdout.strip() if result.returncode == 0 else None,
+                    "error": result.stderr.strip() if result.returncode != 0 else None,
+                    "system": platform.system()
+                }
+                
+            except Exception as e:
+                return {
+                    "available": False,
+                    "version": None,
+                    "error": str(e),
+                    "system": platform.system()
+                }
         
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
@@ -110,7 +165,6 @@ class TagonServer:
             
             try:
                 while True:
-                    # Mantém conexão viva com ping
                     await websocket.receive_text()
             except WebSocketDisconnect:
                 self.websocket_connections.discard(websocket)
@@ -121,55 +175,79 @@ class TagonServer:
         
         @self.app.get("/api/health")
         async def health_check():
-            """Health check avançado"""
+            """Health check com status do Tailwind"""
             component_files = [f for f in os.listdir(self.components_dir) if f.endswith('.tg')] if os.path.exists(self.components_dir) else []
             page_files = [f for f in os.listdir(self.pages_dir) if f.endswith('.tg')] if os.path.exists(self.pages_dir) else []
             
             return {
                 "status": "ok",
                 "version": "0.2.0",
-                "features": ["advanced_routing", "middlewares", "guards"],
+                "features": ["advanced_routing", "middlewares", "guards", "tailwind_css"],  # NOVO
                 "websocket_connections": len(self.websocket_connections),
                 "directories": {
                     "components": self.components_dir,
-                    "pages": self.pages_dir
+                    "pages": self.pages_dir,
+                    "assets": "assets"  # NOVO
                 },
                 "files": {
                     "components": component_files,
                     "pages": page_files
                 },
-                "routing": self.router_manager.get_routes_info()
+                "routing": self.router_manager.get_routes_info(),
+                "assets": self.asset_builder.get_status()  # NOVO
             }
+        
+        # NOVO: Rota para servir CSS do Tailwind
+        @self.app.get("/assets/css/output.css")
+        async def serve_compiled_css():
+            """Serve CSS compilado do Tailwind"""
+            css_content = self.asset_builder.get_compiled_css()
+            if css_content:
+                return Response(content=css_content, media_type="text/css")
+            else:
+                return Response(content="/* Tailwind CSS not compiled yet */", media_type="text/css")
+        
+        # NOVO: API para status do Tailwind
+        @self.app.get("/api/assets/status")
+        async def get_assets_status():
+            """Status detalhado dos assets"""
+            return self.asset_builder.get_status()
+        
+        # NOVO: API para rebuild do Tailwind
+        @self.app.post("/api/assets/rebuild")
+        async def rebuild_assets():
+            """Força rebuild dos assets"""
+            try:
+                await self.asset_builder.tailwind_manager.build_production()
+                return {"status": "success", "message": "Assets rebuilt successfully"}
+            except Exception as e:
+                return {"status": "error", "message": str(e)}
         
         @self.app.get("/api/routes")
         async def get_routes_info():
-            """NOVO: Informações sobre rotas registradas"""
+            """Informações sobre rotas registradas"""
             return self.router_manager.get_routes_info()
         
         @self.app.get("/api/middlewares")
         async def get_middlewares_info():
-            """NOVO: Informações sobre middlewares"""
+            """Informações sobre middlewares"""
             return self.router_manager.middleware_chain.get_middleware_info()
-        
-        @self.app.get("/css/{css_name}")
-        async def serve_css(css_name: str):
-            """Rota para servir arquivos CSS diretamente (para debug)"""
-            css_path = os.path.join(self.components_dir, css_name)
-            if os.path.exists(css_path) and css_name.endswith('.css'):
-                return FileResponse(css_path, media_type="text/css")
-            return {"error": "CSS file not found"}
     
     def _setup_static_files(self):
-        """Configura arquivos estáticos"""
+        """MODIFICADO: Configura arquivos estáticos incluindo assets"""
         if os.path.exists("public"):
             self.app.mount("/static", StaticFiles(directory="public"), name="static")
+        
+        # NOVO: Monta diretório de assets
+        if os.path.exists("assets"):
+            self.app.mount("/assets", StaticFiles(directory="assets"), name="assets")
     
     def _setup_file_watcher(self):
-        """Configura monitoramento de arquivos"""
+        """MODIFICADO: Configura monitoramento incluindo assets"""
         self.file_handler = TagonFileHandler(self)
         self.file_observer = Observer()
         
-        # Monitora diretório de componentes (.tg e .css)
+        # Monitora diretório de componentes
         if os.path.exists(self.components_dir):
             self.file_observer.schedule(
                 self.file_handler, 
@@ -178,7 +256,7 @@ class TagonServer:
             )
             print(f"👀 Monitorando: {self.components_dir}/ (arquivos .tg e .css)")
         
-        # NOVO: Monitora diretório de páginas
+        # Monitora diretório de páginas
         if os.path.exists(self.pages_dir):
             self.file_observer.schedule(
                 self.file_handler, 
@@ -186,6 +264,15 @@ class TagonServer:
                 recursive=True
             )
             print(f"👀 Monitorando: {self.pages_dir}/ (arquivos .tg)")
+        
+        # NOVO: Monitora diretório de assets
+        if os.path.exists("assets"):
+            self.file_observer.schedule(
+                self.file_handler, 
+                "assets", 
+                recursive=True
+            )
+            print(f"👀 Monitorando: assets/ (CSS do Tailwind)")
         
         # Monitora core para mudanças no framework
         if os.path.exists("core"):
@@ -198,8 +285,16 @@ class TagonServer:
     
     async def broadcast_reload(self):
         """Envia sinal de reload para todos os WebSockets conectados"""
+        await self._broadcast_message("reload")
+    
+    async def broadcast_css_update(self):
+        """NOVO: Envia sinal específico para atualização de CSS"""
+        await self._broadcast_message("css-updated")
+    
+    async def _broadcast_message(self, message: str):
+        """Envia mensagem para todos os WebSockets"""
         if not self.websocket_connections:
-            print("📡 Nenhum cliente conectado para reload")
+            print(f"📡 Nenhum cliente conectado para {message}")
             return
         
         disconnected = set()
@@ -207,52 +302,52 @@ class TagonServer:
         
         for websocket in self.websocket_connections:
             try:
-                await websocket.send_text("reload")
+                await websocket.send_text(message)
                 successful_broadcasts += 1
             except Exception as e:
-                print(f"🚨 Erro ao enviar reload: {e}")
+                print(f"🚨 Erro ao enviar {message}: {e}")
                 disconnected.add(websocket)
         
         # Remove conexões desconectadas
         self.websocket_connections -= disconnected
         
-        print(f"📡 Reload enviado para {successful_broadcasts} cliente(s)")
+        print(f"📡 {message} enviado para {successful_broadcasts} cliente(s)")
         if disconnected:
             print(f"🧹 Removidas {len(disconnected)} conexão(ões) inválida(s)")
     
     def start(self):
-        """MUDANÇA: Inicia o servidor de desenvolvimento (SÍNCRONO)"""
+        """MODIFICADO: Inicia o servidor com suporte ao Tailwind"""
         print(f"""
-🚀 TagonPy Advanced Server v0.2.0
+🚀 TagonPy Advanced Server v0.2.0 + Tailwind CSS
 
 📂 Componentes: {self.components_dir}/
 📄 Páginas: {self.pages_dir}/
+🎨 Assets: assets/ (Tailwind CSS)
 🛤️ Roteamento: Avançado (file-based)
 🔧 Middlewares: Ativados
 🛡️ Guards: Ativados
 🌐 Servidor: http://{self.host}:{self.port}
-🔄 Live reload: Ativado (.tg, .css, .py)
+🔄 Live reload: Ativado (.tg, .css, .py, assets/)
 📚 API Docs: http://{self.host}:{self.port}/docs
 🩺 Health: http://{self.host}:{self.port}/api/health
 🛤️ Rotas: http://{self.host}:{self.port}/api/routes
+🎨 Assets Status: http://{self.host}:{self.port}/api/assets/status
 
-🆕 NOVO: Sistema de roteamento file-based!
-   📁 Crie arquivos .tg em pages/ para novas rotas
-   🔗 Parâmetros dinâmicos: [id], [slug]
-   🔧 Middlewares por rota via comentários
+🆕 NOVO: Suporte completo ao Tailwind CSS!
+   🎨 Build automático do CSS
+   🔄 Live reload para mudanças CSS
+   ⚡ Utility-first styling
         """)
         
-        # MUDANÇA: Inicializa sistema de roteamento usando run_once
+        # Inicializa sistemas
         try:
-            # Cria um novo event loop para a inicialização
-            import asyncio
-            
-            # Usa asyncio.run para executar a inicialização
-            total_routes = asyncio.run(self._initialize_routing())
-            print(f"✅ Sistema de roteamento inicializado: {total_routes} rotas descobertas")
+            # Inicializa sistema de assets
+            print("🎨 Inicializando sistema de assets...")
+            asyncio.run(self._initialize_systems())
+            print("✅ Sistemas inicializados com sucesso")
         except Exception as e:
-            print(f"❌ Erro ao inicializar roteamento: {str(e)}")
-            return
+            print(f"❌ Erro ao inicializar sistemas: {str(e)}")
+            print("⚠️  Continuando sem Tailwind CSS...")
         
         # Inicia monitoramento de arquivos
         if self.file_observer:
@@ -260,22 +355,56 @@ class TagonServer:
             print("👀 Monitoramento de arquivos iniciado")
         
         try:
-            # MUDANÇA: Inicia servidor de forma síncrona
             uvicorn.run(
                 self.app,
                 host=self.host,
                 port=self.port,
                 log_level="info",
-                reload=False  # Desabilita reload do uvicorn para usar nosso próprio
+                reload=False
             )
         except KeyboardInterrupt:
             print("\n⏹️  Servidor interrompido pelo usuário")
         finally:
+            # Cleanup
             if self.file_observer:
                 self.file_observer.stop()
                 self.file_observer.join()
                 print("👀 Monitoramento de arquivos parado")
+            
+            # Para asset builder
+            asyncio.run(self._cleanup_systems())
     
-    async def _initialize_routing(self):
-        """NOVO: Método separado para inicialização do roteamento"""
-        return await self.router_manager.initialize_routes()
+    async def _initialize_systems(self):
+        """Inicializa todos os sistemas com diagnóstico detalhado"""
+        print("🔧 Inicializando sistemas TagonPy...")
+        
+        try:
+            # Inicializa asset builder e Tailwind
+            print("🎨 Inicializando sistema de assets...")
+            await self.asset_builder.initialize()
+            
+            # Tenta iniciar modo de desenvolvimento
+            success = await self.asset_builder.start_development_mode()
+            
+            if success:
+                print("✅ Sistema de assets iniciado com sucesso")
+            else:
+                print("⚠️ Sistema de assets iniciado com limitações")
+                print("💡 Diagnóstico disponível em: /api/assets/diagnostics")
+                
+        except Exception as e:
+            print(f"⚠️ Erro no sistema de assets: {str(e)}")
+            print("💡 TagonPy continuará funcionando normalmente")
+        
+        # Inicializa sistema de roteamento
+        try:
+            total_routes = await self.router_manager.initialize_routes()
+            print(f"✅ Sistema de roteamento: {total_routes} rotas descobertas")
+        except Exception as e:
+            print(f"❌ Erro crítico no sistema de roteamento: {str(e)}")
+            raise
+    
+    async def _cleanup_systems(self):
+        """NOVO: Cleanup dos sistemas"""
+        await self.asset_builder.stop_development_mode()
+        print("🧹 Sistemas finalizados")

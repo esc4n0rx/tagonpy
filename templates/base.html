@@ -4,31 +4,54 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title or "TagonPy" }}</title>
+    
+    <!-- Tailwind CSS -->
+    {% if assets and assets.tailwind_css %}
     <style>
-        /* Reset básico para garantir limpeza */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        /* Tailwind CSS compilado */
+        {{ assets.tailwind_css | safe }}
+    </style>
+    {% else %}
+    <!-- Fallback: Tailwind via CDN para desenvolvimento inicial -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'tagonpy': {
+                            50: '#f0f9ff',
+                            500: '#3b82f6',
+                            900: '#1e3a8a'
+                        }
+                    }
+                }
+            }
         }
-        
-        html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-        }
-        
-        /* CSS do componente será injetado aqui */
+    </script>
+    {% endif %}
+    
+    <!-- CSS do componente (fallback) -->
+    {% if component_css %}
+    <style>
+        /* CSS do componente */
         {{ component_css | safe }}
     </style>
+    {% endif %}
 </head>
-<body>
+<body class="bg-gray-50 dark:bg-gray-900">
+    <!-- Notificação de status do Tailwind -->
+    <div id="tailwind-status" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+            🎨 Tailwind CSS ativo
+        </div>
+    </div>
+    
     {{ content | safe }}
     
-    <!-- Live Reload Script -->
+    <!-- Live Reload Script com suporte a Tailwind -->
     <script>
-        console.log('🔗 Iniciando TagonPy Live Reload...');
+        console.log('🔗 Iniciando TagonPy Live Reload com Tailwind...');
         
         let ws;
         let reconnectInterval = 1000;
@@ -44,16 +67,24 @@
                     reconnectAttempts = 0;
                     reconnectInterval = 1000;
                     showConnectionStatus('connected');
+                    showTailwindStatus();
                 };
                 
                 ws.onmessage = function(event) {
                     console.log('📨 Mensagem recebida:', event.data);
+                    
                     if (event.data === 'reload') {
                         console.log('🔄 Recarregando página...');
                         showReloadNotification();
                         setTimeout(() => {
                             location.reload();
                         }, 500);
+                    } else if (event.data === 'css-updated') {
+                        console.log('🎨 CSS atualizado, recarregando...');
+                        showCssUpdateNotification();
+                        setTimeout(() => {
+                            location.reload();
+                        }, 300);
                     }
                 };
                 
@@ -93,30 +124,16 @@
             
             const indicator = document.createElement('div');
             indicator.id = 'tagonpy-status';
-            indicator.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                z-index: 9999;
-                padding: 8px 16px;
-                border-radius: 20px;
-                font-size: 12px;
-                font-weight: 600;
-                color: white;
-                backdrop-filter: blur(10px);
-                border: 1px solid rgba(255,255,255,0.2);
-                transition: all 0.3s ease;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            `;
+            indicator.className = 'fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300';
             
             if (status === 'connected') {
-                indicator.style.background = 'rgba(16, 185, 129, 0.9)';
+                indicator.className += ' bg-green-500 text-white';
                 indicator.textContent = '🟢 Live Reload ON';
             } else if (status === 'disconnected') {
-                indicator.style.background = 'rgba(239, 68, 68, 0.9)';
+                indicator.className += ' bg-red-500 text-white';
                 indicator.textContent = '🔴 Reconnecting...';
             } else {
-                indicator.style.background = 'rgba(245, 158, 11, 0.9)';
+                indicator.className += ' bg-yellow-500 text-white';
                 indicator.textContent = '🟡 Connection Error';
             }
             
@@ -136,53 +153,41 @@
             }
         }
         
+        function showTailwindStatus() {
+            const status = document.getElementById('tailwind-status');
+            if (status) {
+                status.classList.remove('hidden');
+                setTimeout(() => {
+                    status.classList.add('hidden');
+                }, 3000);
+            }
+        }
+        
         function showReloadNotification() {
             const notification = document.createElement('div');
-            notification.style.cssText = `
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                z-index: 10000;
-                background: rgba(59, 130, 246, 0.95);
-                color: white;
-                padding: 20px 30px;
-                border-radius: 12px;
-                font-size: 16px;
-                font-weight: 600;
-                backdrop-filter: blur(20px);
-                border: 1px solid rgba(255,255,255,0.3);
-                box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                animation: tagonpy-pulse 0.5s ease;
-            `;
-            notification.textContent = '🔄 Atualizando componente...';
+            notification.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-blue-500 text-white px-6 py-4 rounded-lg shadow-xl font-medium';
+            notification.innerHTML = '🔄 Atualizando componente...';
             
-            const style = document.createElement('style');
-            style.textContent = `
-                @keyframes tagonpy-pulse {
-                    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
-                    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-                }
-            `;
-            document.head.appendChild(style);
+            document.body.appendChild(notification);
+        }
+        
+        function showCssUpdateNotification() {
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-purple-500 text-white px-6 py-4 rounded-lg shadow-xl font-medium';
+            notification.innerHTML = '🎨 Tailwind CSS atualizado...';
             
             document.body.appendChild(notification);
         }
         
         connect();
         
+        // Log do status do Tailwind
         setTimeout(() => {
-            const body = document.body;
-            const computedStyle = window.getComputedStyle(body);
-            const backgroundColor = computedStyle.backgroundColor;
-            
-            console.log('🎨 Background color detectado:', backgroundColor);
-            
-            if (backgroundColor === 'rgba(0, 0, 0, 0)' || backgroundColor === 'transparent') {
-                console.warn('⚠️ Tema escuro pode não estar sendo aplicado corretamente');
+            const hasTailwind = document.querySelector('style') || document.querySelector('script[src*="tailwind"]');
+            if (hasTailwind) {
+                console.log('✅ Tailwind CSS carregado');
             } else {
-                console.log('✅ Estilos do componente aplicados com sucesso');
+                console.warn('⚠️ Tailwind CSS não detectado');
             }
         }, 1000);
     </script>
