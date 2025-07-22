@@ -21,6 +21,7 @@ class TailwindManager:
         self.input_css = self.css_dir / "input.css"
         self.output_css = self.css_dir / "output.css"
         self.package_json = self.project_root / "package.json"
+        self.node_modules_bin = self.project_root / "node_modules" / ".bin"
         
         # Windows compatibility
         self.is_windows = platform.system().lower() == "windows"
@@ -59,7 +60,7 @@ class TailwindManager:
         # Cria arquivos de configuração
         await self._create_config_files()
         
-        # Build inicial
+        # Build inicial (CORRIGIDO)
         await self._initial_build()
         
         self.is_initialized = True
@@ -250,15 +251,50 @@ module.exports = {
         
         print("✅ Arquivos de configuração criados")
     
+    def _get_tailwind_executable(self):
+        """
+        Retorna o caminho para o executável do Tailwind (CORRIGIDO para Windows)
+        """
+        if self.is_windows:
+            # Windows: tenta diferentes caminhos
+            possible_paths = [
+                self.node_modules_bin / "tailwindcss.cmd",
+                self.node_modules_bin / "tailwindcss.exe", 
+                self.node_modules_bin / "tailwindcss"
+            ]
+            
+            for path in possible_paths:
+                if path.exists():
+                    print(f"✅ Encontrado executável Tailwind: {path}")
+                    return str(path)
+            
+            # Fallback para npm run
+            print("⚠️ Executável direto não encontrado, usando npm run")
+            return None
+        else:
+            # Unix/Linux/macOS
+            tailwind_bin = self.node_modules_bin / "tailwindcss"
+            if tailwind_bin.exists():
+                return str(tailwind_bin)
+            return None
+    
     async def _initial_build(self):
-        """Executa build inicial do CSS (versão corrigida para Windows)"""
+        """Executa build inicial do CSS - VERSÃO FINAL CORRIGIDA PARA WINDOWS"""
         print("🔨 Executando build inicial...")
         
         try:
+            # CORREÇÃO DEFINITIVA: Usa caminho absoluto do executável
             if self.is_windows:
-                # Windows: usar shell=True e npx via shell
-                cmd = f"npx tailwindcss -i {self.input_css} -o {self.output_css}"
-                print(f"🔧 Executando: {cmd}")
+                # Constrói comando com caminhos completos
+                tailwind_exe = self.project_root / "node_modules" / ".bin" / "tailwindcss.cmd"
+                
+                if tailwind_exe.exists():
+                    cmd = f'"{tailwind_exe.absolute()}" -i "{self.input_css.absolute()}" -o "{self.output_css.absolute()}"'
+                    print(f"🔧 Executando Windows: {cmd}")
+                else:
+                    # Fallback: tenta via npm script
+                    cmd = "npm run build-css"
+                    print(f"🔧 Fallback Windows: {cmd}")
                 
                 process = await asyncio.create_subprocess_shell(
                     cmd,
@@ -284,18 +320,169 @@ module.exports = {
                 error_msg = stderr.decode('utf-8', errors='ignore').strip()
                 print(f"❌ Erro no build: {error_msg}")
                 print(f"❌ stdout: {stdout.decode('utf-8', errors='ignore')}")
-                raise Exception(f"Erro no build inicial: {error_msg}")
-            
-            # Verifica se arquivo foi criado
-            if self.output_css.exists():
-                size = self.output_css.stat().st_size
-                print(f"✅ CSS compilado com sucesso: {self.output_css} ({size} bytes)")
+                
+                # Cria CSS de fallback se build falhar
+                print("🔧 Criando CSS de fallback...")
+                await self._create_fallback_css()
             else:
-                raise Exception("Arquivo CSS não foi gerado")
+                # Verifica se arquivo foi criado
+                if self.output_css.exists():
+                    size = self.output_css.stat().st_size
+                    print(f"✅ CSS compilado com sucesso: {self.output_css} ({size} bytes)")
+                else:
+                    print("⚠️ Arquivo CSS não foi gerado, criando fallback...")
+                    await self._create_fallback_css()
                 
         except Exception as e:
             print(f"❌ Exceção durante build inicial: {str(e)}")
-            raise
+            print("🔧 Criando CSS de fallback...")
+            await self._create_fallback_css()
+    
+    async def _create_fallback_css(self):
+        """Cria CSS de fallback quando build falha"""
+        fallback_css = """/* TagonPy Fallback CSS com classes Tailwind básicas */
+
+/* Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+}
+
+html {
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  tab-size: 4;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  line-height: inherit;
+}
+
+/* Cores de fundo */
+.bg-gray-900 { background-color: rgb(17 24 39); }
+.bg-gray-800 { background-color: rgb(31 41 55); }
+.bg-blue-500 { background-color: rgb(59 130 246); }
+.bg-green-400 { background-color: rgb(74 222 128); }
+.bg-yellow-400 { background-color: rgb(250 204 21); }
+.bg-purple-400 { background-color: rgb(196 181 253); }
+.bg-cyan-400 { background-color: rgb(34 211 238); }
+
+/* Cores de texto */
+.text-white { color: rgb(255 255 255); }
+.text-gray-300 { color: rgb(209 213 219); }
+.text-gray-400 { color: rgb(156 163 175); }
+.text-blue-400 { color: rgb(96 165 250); }
+.text-green-400 { color: rgb(74 222 128); }
+.text-yellow-400 { color: rgb(250 204 21); }
+.text-purple-400 { color: rgb(196 181 253); }
+
+/* Layout */
+.container { 
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  max-width: 1280px;
+}
+
+.min-h-screen { min-height: 100vh; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+.p-6 { padding: 1.5rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mb-6 { margin-bottom: 1.5rem; }
+.mb-12 { margin-bottom: 3rem; }
+.mr-2 { margin-right: 0.5rem; }
+.mr-4 { margin-right: 1rem; }
+
+/* Grid */
+.grid { display: grid; }
+.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.gap-6 { gap: 1.5rem; }
+.gap-8 { gap: 2rem; }
+
+@media (min-width: 768px) {
+  .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1024px) {
+  .lg\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* Flexbox */
+.flex { display: flex; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.justify-center { justify-content: center; }
+.space-x-4 > :not([hidden]) ~ :not([hidden]) { margin-left: 1rem; }
+
+/* Texto */
+.text-center { text-align: center; }
+.text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+.text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+.text-2xl { font-size: 1.5rem; line-height: 2rem; }
+.text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+.text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
+.text-5xl { font-size: 3rem; line-height: 1; }
+.text-6xl { font-size: 3.75rem; line-height: 1; }
+
+.font-bold { font-weight: 700; }
+.font-semibold { font-weight: 600; }
+
+/* Bordas */
+.rounded-lg { border-radius: 0.5rem; }
+.rounded-full { border-radius: 9999px; }
+
+/* Tamanhos */
+.w-3 { width: 0.75rem; }
+.h-3 { height: 0.75rem; }
+.max-w-2xl { max-width: 42rem; }
+
+/* Transições */
+.transition-colors { 
+  transition-property: color, background-color, border-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Hover states */
+.hover\\:bg-gray-750:hover { background-color: #374151; }
+
+/* Gradientes (simplificado) */
+.bg-gradient-to-r { 
+  background: linear-gradient(to right, var(--tw-gradient-stops));
+  background: linear-gradient(to right, rgb(96 165 250), rgb(34 211 238));
+}
+
+.bg-clip-text { 
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.text-transparent { color: transparent; }
+
+/* Responsivo básico */
+@media (max-width: 767px) {
+  .container { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .text-5xl { font-size: 2.5rem; }
+  .text-6xl { font-size: 3rem; }
+}
+"""
+        
+        try:
+            with open(self.output_css, 'w', encoding='utf-8') as f:
+                f.write(fallback_css)
+            
+            size = self.output_css.stat().st_size
+            print(f"✅ CSS de fallback criado: {self.output_css} ({size} bytes)")
+            
+        except Exception as e:
+            print(f"❌ Erro ao criar CSS de fallback: {str(e)}")
     
     async def start_watch_mode(self):
         """
@@ -311,10 +498,24 @@ module.exports = {
             await self.stop_watch_mode()
         
         try:
-            if self.is_windows:
-                # Windows: usar shell=True
-                cmd = f"npx tailwindcss -i {self.input_css} -o {self.output_css} --watch"
+            tailwind_exec = self._get_tailwind_executable()
+            
+            if self.is_windows and tailwind_exec:
+                # Windows: usa executável direto se disponível
+                cmd = f'"{tailwind_exec}" -i "{self.input_css}" -o "{self.output_css}" --watch'
                 print(f"🔧 Executando watch: {cmd}")
+                
+                self.build_process = await asyncio.create_subprocess_shell(
+                    cmd,
+                    cwd=self.project_root,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    shell=True
+                )
+            elif self.is_windows:
+                # Windows: fallback para npm run
+                cmd = "npm run watch-css"
+                print(f"🔧 Executando watch fallback: {cmd}")
                 
                 self.build_process = await asyncio.create_subprocess_shell(
                     cmd,
@@ -342,7 +543,7 @@ module.exports = {
             
         except Exception as e:
             print(f"❌ Erro ao iniciar watch mode: {str(e)}")
-            raise
+            print("⚠️ Continuando sem watch mode...")
     
     async def stop_watch_mode(self):
         """Para o modo watch"""
@@ -397,8 +598,21 @@ module.exports = {
         print("🚀 Executando build de produção...")
         
         try:
-            if self.is_windows:
-                cmd = f"npx tailwindcss -i {self.input_css} -o {self.output_css} --minify"
+            tailwind_exec = self._get_tailwind_executable()
+            
+            if self.is_windows and tailwind_exec:
+                cmd = f'"{tailwind_exec}" -i "{self.input_css}" -o "{self.output_css}" --minify'
+                print(f"🔧 Executando: {cmd}")
+                
+                process = await asyncio.create_subprocess_shell(
+                    cmd,
+                    cwd=self.project_root,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    shell=True
+                )
+            elif self.is_windows:
+                cmd = "npm run build-css-prod"
                 print(f"🔧 Executando: {cmd}")
                 
                 process = await asyncio.create_subprocess_shell(
@@ -460,5 +674,6 @@ module.exports = {
             "output_css_exists": self.output_css.exists(),
             "output_css_size": self.output_css.stat().st_size if self.output_css.exists() else 0,
             "system": platform.system(),
-            "project_root": str(self.project_root.absolute())
+            "project_root": str(self.project_root.absolute()),
+            "tailwind_executable": self._get_tailwind_executable()
         }

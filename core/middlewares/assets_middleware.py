@@ -17,7 +17,13 @@ class AssetsMiddleware(BaseMiddleware):
         Injeta informações de assets no contexto
         """
         if not self.asset_builder:
-            return {}
+            return {
+                "assets": {
+                    "tailwind_css": "",
+                    "css_url": "/assets/css/output.css",
+                    "has_tailwind": False
+                }
+            }
         
         # Obtém CSS compilado do Tailwind
         compiled_css = self.asset_builder.get_compiled_css()

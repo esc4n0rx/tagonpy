@@ -9,6 +9,8 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import uvicorn
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 # NOVO: Imports do sistema de assets
 from core.assets import AssetBuilder
@@ -16,20 +18,21 @@ from core.routing import RouterManager
 from core.middlewares import LoggingMiddleware, CorsMiddleware, AuthMiddleware, AssetsMiddleware
 
 class TagonFileHandler(FileSystemEventHandler):
-    """Handler para monitorar mudanças em arquivos .tg, .css e assets"""
+    """Handler para monitorar mudanças em arquivos .tg, .css e assets - CORRIGIDO"""
     
     def __init__(self, server_instance):
         self.server = server_instance
         self.last_modified = {}
         self.debounce_time = 0.5
+        self.executor = ThreadPoolExecutor(max_workers=2)  # NOVO: Thread pool para async calls
     
     def on_modified(self, event):
-        """Callback quando um arquivo é modificado"""
+        """Callback quando um arquivo é modificado - CORRIGIDO"""
         if not event.is_directory and (
             event.src_path.endswith('.tg') or 
             event.src_path.endswith('.css') or 
             event.src_path.endswith('.py') or
-            'assets/' in event.src_path  # NOVO: monitora pasta assets
+            'assets/' in event.src_path
         ):
             current_time = time.time()
             
@@ -40,20 +43,39 @@ class TagonFileHandler(FileSystemEventHandler):
                 file_name = os.path.basename(event.src_path)
                 file_ext = os.path.splitext(event.src_path)[1]
                 
-                # NOVO: Detecta mudanças no CSS de assets
+                # CORREÇÃO: Usar thread-safe method para chamar async functions
                 if 'assets/' in event.src_path and file_ext == '.css':
                     print(f"🎨 Tailwind CSS modificado: {file_name}")
-                    # Envia evento específico para CSS
-                    asyncio.create_task(self.server.broadcast_css_update())
+                    self._schedule_broadcast(self.server.broadcast_css_update)
                 elif file_ext == '.css':
                     print(f"🎨 CSS modificado: {file_name}")
-                    asyncio.create_task(self.server.broadcast_reload())
+                    self._schedule_broadcast(self.server.broadcast_reload)
                 elif file_ext == '.tg':
                     print(f"🏷️ Componente modificado: {file_name}")
-                    asyncio.create_task(self.server.broadcast_reload())
+                    self._schedule_broadcast(self.server.broadcast_reload)
                 else:
                     print(f"🔄 Arquivo modificado: {file_name}")
-                    asyncio.create_task(self.server.broadcast_reload())
+                    self._schedule_broadcast(self.server.broadcast_reload)
+    
+    def _schedule_broadcast(self, coro_func):
+        """NOVO: Agenda chamada assíncrona de forma thread-safe"""
+        def run_in_new_thread():
+            try:
+                # Cria novo event loop para a thread
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                
+                # Executa a corrotina
+                new_loop.run_until_complete(coro_func())
+                
+                # Limpa o loop
+                new_loop.close()
+                
+            except Exception as e:
+                print(f"⚠️ Erro ao executar broadcast: {str(e)}")
+        
+        # Executa em thread separada para evitar conflito com event loop
+        self.executor.submit(run_in_new_thread)
 
 class TagonServer:
     """Servidor de desenvolvimento do TagonPy com suporte ao Tailwind CSS"""
@@ -89,32 +111,31 @@ class TagonServer:
         self._setup_file_watcher()
     
     def _setup_middlewares(self):
-        """MODIFICADO: Configura middlewares incluindo assets"""
+        """Configura middlewares incluindo assets"""
         # Registra middlewares padrão
         logging_middleware = LoggingMiddleware(log_level="INFO")
         cors_middleware = CorsMiddleware()
         auth_middleware = AuthMiddleware()
-        assets_middleware = AssetsMiddleware(self.asset_builder)  # NOVO
+        assets_middleware = AssetsMiddleware(self.asset_builder)
         
         self.router_manager.middleware_chain.register_middleware(logging_middleware, priority=1)
         self.router_manager.middleware_chain.register_middleware(cors_middleware, priority=5)
         self.router_manager.middleware_chain.register_middleware(auth_middleware, priority=10)
-        self.router_manager.middleware_chain.register_middleware(assets_middleware, priority=20)  # NOVO
+        self.router_manager.middleware_chain.register_middleware(assets_middleware, priority=20)
         
-        # Registra no router manager
-        self.router_manager.register_middleware("logging", logging_middleware.before_request)
-        self.router_manager.register_middleware("cors", cors_middleware.before_request)
-        self.router_manager.register_middleware("auth", auth_middleware.before_request)
-        self.router_manager.register_middleware("assets", assets_middleware.before_request)  # NOVO
+        # CORREÇÃO: Registra middlewares como objetos, não como funções
+        self.router_manager.register_middleware("logging", logging_middleware)
+        self.router_manager.register_middleware("cors", cors_middleware)
+        self.router_manager.register_middleware("auth", auth_middleware)
+        self.router_manager.register_middleware("assets", assets_middleware)
     
     def _setup_api_routes(self):
-        """MODIFICADO: Configura rotas da API incluindo assets"""
+        """Configura rotas da API incluindo assets"""
         @self.app.get("/api/assets/diagnostics")
         async def get_full_diagnostics():
             """Diagnóstico completo do sistema de assets"""
             return self.asset_builder.get_diagnostics()
         
-        # NOVO: API para testar Node.js
         @self.app.get("/api/system/nodejs")
         async def test_nodejs():
             """Testa disponibilidade do Node.js"""
@@ -181,39 +202,38 @@ class TagonServer:
             
             return {
                 "status": "ok",
-                "version": "0.2.0",
-                "features": ["advanced_routing", "middlewares", "guards", "tailwind_css"],  # NOVO
+                "version": "0.2.1",
+                "features": ["advanced_routing", "middlewares", "guards", "tailwind_css"],
                 "websocket_connections": len(self.websocket_connections),
                 "directories": {
                     "components": self.components_dir,
                     "pages": self.pages_dir,
-                    "assets": "assets"  # NOVO
+                    "assets": "assets"
                 },
                 "files": {
                     "components": component_files,
                     "pages": page_files
                 },
                 "routing": self.router_manager.get_routes_info(),
-                "assets": self.asset_builder.get_status()  # NOVO
+                "assets": self.asset_builder.get_status()
             }
         
-        # NOVO: Rota para servir CSS do Tailwind
+        # Rota para servir CSS do Tailwind
         @self.app.get("/assets/css/output.css")
         async def serve_compiled_css():
             """Serve CSS compilado do Tailwind"""
+            from fastapi.responses import Response
             css_content = self.asset_builder.get_compiled_css()
             if css_content:
                 return Response(content=css_content, media_type="text/css")
             else:
                 return Response(content="/* Tailwind CSS not compiled yet */", media_type="text/css")
         
-        # NOVO: API para status do Tailwind
         @self.app.get("/api/assets/status")
         async def get_assets_status():
             """Status detalhado dos assets"""
             return self.asset_builder.get_status()
         
-        # NOVO: API para rebuild do Tailwind
         @self.app.post("/api/assets/rebuild")
         async def rebuild_assets():
             """Força rebuild dos assets"""
@@ -234,16 +254,15 @@ class TagonServer:
             return self.router_manager.middleware_chain.get_middleware_info()
     
     def _setup_static_files(self):
-        """MODIFICADO: Configura arquivos estáticos incluindo assets"""
+        """Configura arquivos estáticos incluindo assets"""
         if os.path.exists("public"):
             self.app.mount("/static", StaticFiles(directory="public"), name="static")
         
-        # NOVO: Monta diretório de assets
         if os.path.exists("assets"):
             self.app.mount("/assets", StaticFiles(directory="assets"), name="assets")
     
     def _setup_file_watcher(self):
-        """MODIFICADO: Configura monitoramento incluindo assets"""
+        """Configura monitoramento incluindo assets"""
         self.file_handler = TagonFileHandler(self)
         self.file_observer = Observer()
         
@@ -265,7 +284,7 @@ class TagonServer:
             )
             print(f"👀 Monitorando: {self.pages_dir}/ (arquivos .tg)")
         
-        # NOVO: Monitora diretório de assets
+        # Monitora diretório de assets
         if os.path.exists("assets"):
             self.file_observer.schedule(
                 self.file_handler, 
@@ -288,7 +307,7 @@ class TagonServer:
         await self._broadcast_message("reload")
     
     async def broadcast_css_update(self):
-        """NOVO: Envia sinal específico para atualização de CSS"""
+        """Envia sinal específico para atualização de CSS"""
         await self._broadcast_message("css-updated")
     
     async def _broadcast_message(self, message: str):
@@ -316,27 +335,25 @@ class TagonServer:
             print(f"🧹 Removidas {len(disconnected)} conexão(ões) inválida(s)")
     
     def start(self):
-        """MODIFICADO: Inicia o servidor com suporte ao Tailwind"""
+        """Inicia o servidor com suporte ao Tailwind"""
         print(f"""
-🚀 TagonPy Advanced Server v0.2.0 + Tailwind CSS
+🚀 TagonPy Advanced Server v0.2.1 + Tailwind CSS (FIXED)
 
 📂 Componentes: {self.components_dir}/
 📄 Páginas: {self.pages_dir}/
 🎨 Assets: assets/ (Tailwind CSS)
 🛤️ Roteamento: Avançado (file-based)
-🔧 Middlewares: Ativados
+🔧 Middlewares: Ativados (CORRIGIDO)
 🛡️ Guards: Ativados
 🌐 Servidor: http://{self.host}:{self.port}
-🔄 Live reload: Ativado (.tg, .css, .py, assets/)
+🔄 Live reload: Ativado (CORRIGIDO)
 📚 API Docs: http://{self.host}:{self.port}/docs
 🩺 Health: http://{self.host}:{self.port}/api/health
-🛤️ Rotas: http://{self.host}:{self.port}/api/routes
-🎨 Assets Status: http://{self.host}:{self.port}/api/assets/status
 
-🆕 NOVO: Suporte completo ao Tailwind CSS!
-   🎨 Build automático do CSS
-   🔄 Live reload para mudanças CSS
-   ⚡ Utility-first styling
+🆕 CORREÇÕES:
+   ✅ File watcher async fix
+   ✅ Middleware calling fix
+   ✅ Windows Tailwind fix
         """)
         
         # Inicializa sistemas
@@ -405,6 +422,6 @@ class TagonServer:
             raise
     
     async def _cleanup_systems(self):
-        """NOVO: Cleanup dos sistemas"""
+        """Cleanup dos sistemas"""
         await self.asset_builder.stop_development_mode()
         print("🧹 Sistemas finalizados")

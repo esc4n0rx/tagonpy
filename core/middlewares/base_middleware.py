@@ -40,6 +40,22 @@ class BaseMiddleware(ABC):
         """
         pass
     
+    # NOVO: Método para compatibilidade com router_manager
+    async def __call__(self, request: Request, phase: str = "before", response_data: Dict = None) -> Optional[Dict[str, Any]]:
+        """
+        Método callable para compatibilidade com router_manager
+        """
+        try:
+            if phase == "before":
+                return await self.before_request(request)
+            elif phase == "after":
+                return await self.after_request(request, response_data or {})
+            else:
+                return {}
+        except Exception as e:
+            print(f"⚠️ Erro no middleware {self.name}: {str(e)}")
+            return {}
+    
     def enable(self):
         """Habilita o middleware"""
         self.enabled = True

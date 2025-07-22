@@ -107,7 +107,7 @@ class RouterManager:
             route_params = dict(request.path_params)
             query_params = dict(request.query_params)
             
-            # 2. Executa middlewares pré-processamento
+            # 2. Executa middlewares pré-processamento (CORRIGIDO)
             middleware_context = await self._execute_middlewares(
                 request, config, "before"
             )
@@ -135,7 +135,7 @@ class RouterManager:
                 component_context
             )
             
-            # 6. Executa middlewares pós-processamento
+            # 6. Executa middlewares pós-processamento (CORRIGIDO)
             await self._execute_middlewares(
                 request, config, "after", 
                 response_data={"html": html_content}
@@ -159,7 +159,7 @@ class RouterManager:
                                    phase: str,
                                    response_data: Dict = None):
         """
-        Executa middlewares registrados para a rota
+        Executa middlewares registrados para a rota (CORRIGIDO)
         """
         context = {}
         
@@ -167,9 +167,20 @@ class RouterManager:
             if middleware_name in self.middleware_registry:
                 middleware = self.middleware_registry[middleware_name]
                 try:
-                    result = await middleware(request, phase, response_data)
+                    # CORREÇÃO: Trata middleware como objeto BaseMiddleware
+                    if hasattr(middleware, 'before_request') and phase == "before":
+                        result = await middleware.before_request(request)
+                    elif hasattr(middleware, 'after_request') and phase == "after":
+                        result = await middleware.after_request(request, response_data or {})
+                    elif callable(middleware):
+                        # Fallback para middlewares antigos
+                        result = await middleware(request, phase, response_data)
+                    else:
+                        result = {}
+                    
                     if result:
                         context.update(result)
+                        
                 except Exception as e:
                     print(f"⚠️ Erro no middleware {middleware_name}: {str(e)}")
         
@@ -249,9 +260,9 @@ class RouterManager:
             status_code=500
         )
     
-    def register_middleware(self, name: str, middleware: Callable):
+    def register_middleware(self, name: str, middleware):
         """
-        Registra um middleware personalizado
+        Registra um middleware personalizado (CORRIGIDO)
         """
         self.middleware_registry[name] = middleware
         print(f"🔧 Middleware '{name}' registrado")
