@@ -20,14 +20,24 @@ class TagonRenderer:
     
     def render_component(self, component_path: str) -> str:
         """
-        Renderiza um componente .tg para HTML completo
+        Renderiza um componente .tg para HTML completo (método original)
+        """
+        return self.render_component_with_context(component_path, {})
+    
+    def render_component_with_context(self, component_path: str, external_context: Dict[str, Any] = None) -> str:
+        """
+        Renderiza um componente .tg com contexto externo (NOVO)
         
         Args:
             component_path: Caminho para o arquivo .tg
+            external_context: Contexto adicional do sistema de roteamento
             
         Returns:
             str: HTML renderizado
         """
+        if external_context is None:
+            external_context = {}
+            
         try:
             print(f"🔍 Parseando componente: {component_path}")
             
@@ -50,10 +60,13 @@ class TagonRenderer:
             # Executa imports e funções do componente
             component_context = self._execute_component_logic(component)
             
-            print(f"🧮 Context functions: {list(component_context.keys())}")
+            # NOVO: Mescla contexto do componente com contexto externo do roteamento
+            merged_context = {**component_context, **external_context}
             
-            # Renderiza HTML usando Jinja2
-            html_content = self._render_html(component.html, component_context)
+            print(f"🧮 Context total: {list(merged_context.keys())}")
+            
+            # Renderiza HTML usando Jinja2 com contexto mesclado
+            html_content = self._render_html(component.html, merged_context)
             
             print(f"✅ HTML renderizado: {len(html_content)} chars")
             
@@ -63,6 +76,7 @@ class TagonRenderer:
             print(f"❌ Erro no renderer: {str(e)}")
             return self._render_error_page(str(e))
     
+    # ... resto dos métodos permanecem iguais ...
     def _load_external_css(self, component_path: str) -> str:
         """
         Carrega arquivo CSS externo correspondente ao componente
